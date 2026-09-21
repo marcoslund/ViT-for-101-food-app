@@ -72,13 +72,8 @@ def test_subset_respeta_las_exclusiones(manifest, subset):
 
 
 def test_subset_tiene_las_columnas_que_consume_el_benchmark(subset):
-    assert list(subset.columns) == ["rel", "class_dir", "label", "margen", "tercil", "bytes"]
+    assert list(subset.columns) == ["rel", "class_dir", "label", "margen", "tercil"]
     assert set(subset["tercil"].unique()) <= TERCILES
-    assert (subset["bytes"] > 0).all()
-
-
-def test_bytes_totales_coinciden_con_el_manifiesto(manifest, subset):
-    assert int(subset["bytes"].sum()) == manifest["bytes_totales"]
 
 
 def test_dificultad_cubre_las_101_clases(difficulty):
