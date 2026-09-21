@@ -20,6 +20,7 @@ EXTERNAL_DATA_DIR = DATA_DIR / "external"
 FOOD101_DIR = RAW_DATA_DIR / "food-101"
 FOOD101_IMAGES_DIR = FOOD101_DIR / "images"
 FOOD101_META_DIR = FOOD101_DIR / "meta"
+FOOD101_CLASSES = FOOD101_META_DIR / "classes.txt"
 FOOD101_URL = "https://data.vision.ee.ethz.ch/cvl/food-101.tar.gz"
 
 # Artefactos del EDA (notebooks/1.0-eda-food101.ipynb). Estos SI estan versionados:
@@ -31,12 +32,33 @@ CLASS_DIFFICULTY = PROCESSED_DATA_DIR / "class_difficulty.csv"
 # Semilla unica del proyecto. El manifiesto del subset la registra.
 SEED = 42
 
-# Resoluciones nativas de los modelos del benchmark:
-# nombre -> (resize del lado corto, tamano del center-crop)
-PIPELINES = {
-    "ViT (224)": (256, 224),
-    "MobileViT (256)": (288, 256),
+# Registry de modelos del benchmark: clave corta -> checkpoint de HuggingFace.
+#
+# Este es el UNICO lugar del proyecto donde se nombra una arquitectura. Todo lo demas
+# (resolucion, normalizacion, orden de canales) se lee del AutoImageProcessor en runtime,
+# porque escribirlo a mano es exactamente como se rompe la comparacion entre modelos.
+# Sumar una arquitectura al benchmark es agregar una linea aca: los tests estan
+# parametrizados sobre este dict y la cubren solos.
+MODELS = {
+    "vit": "google/vit-base-patch16-224-in21k",
+    "mobilevit": "apple/mobilevit-small",
 }
+
+# Artefactos del preprocesamiento. Los tres primeros se versionan: definen el split de
+# validacion y los indices de clase, que tienen que ser identicos entre todas las corridas.
+TRAIN_VAL_SPLIT = PROCESSED_DATA_DIR / "train_val_split.csv"
+TRAIN_VAL_MANIFEST = PROCESSED_DATA_DIR / "train_val_split_manifest.json"
+LABEL_MAP = PROCESSED_DATA_DIR / "label_map.json"
+
+# Cache de imagenes reescaladas. Regenerable, no se versiona.
+# 288 es la mayor resolucion de entrada que pide algun modelo del registry.
+CACHE_SHORT_SIDE = 288
+CACHE_JPEG_QUALITY = 95
+CACHE_DIR = INTERIM_DATA_DIR / f"food-101-{CACHE_SHORT_SIDE}"
+CACHE_MANIFEST = CACHE_DIR / "cache_manifest.json"
+
+# Fraccion de train que se reserva para validacion (Food-101 no trae split de validacion).
+VAL_FRACTION = 0.10
 
 MODELS_DIR = PROJ_ROOT / "models"
 
