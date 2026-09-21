@@ -199,3 +199,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+# Artefactos de trabajo de Claude Code: specs y planes de implementacion.
+# Son material de proceso, no documentacion del proyecto.
+docs/superpowers/
+CLAUDE.md
+.claude/
