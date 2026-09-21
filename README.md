@@ -27,6 +27,13 @@ latencia y transferencia del modelo servido por API **se paga en capacidad discr
 Si la brecha entre ambos es plana a lo largo del ranking de dificultad de las clases, el modelo en
 dispositivo es la elección correcta y la API no se justifica.
 
+### Alcance
+
+No desplegamos nada. Ambos modelos se entrenan y evalúan **localmente, sobre el mismo hardware**.
+Lo que se mide es el **costo arquitectónico** —parámetros, FLOPs, latencia de inferencia— y la
+conclusión sobre el régimen de despliegue se **argumenta** a partir de eso. La latencia de red y el
+costo por llamada de la columna de arriba son **supuestos declarados, no mediciones**.
+
 Más adelante pueden sumarse otras arquitecturas del lado de la API. El EDA está escrito para que
 eso no obligue a rehacer nada: todo lo que mide vale para cualquier modelo servido remotamente a
 224×224.
