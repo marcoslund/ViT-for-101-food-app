@@ -1,28 +1,94 @@
+"""CLI de preparacion del dataset: descarga, split de validacion y cache.
+
+python -m vit_for_101_food_app.dataset download
+python -m vit_for_101_food_app.dataset split
+python -m vit_for_101_food_app.dataset cache
+"""
+
 from pathlib import Path
 
 from loguru import logger
-from tqdm import tqdm
 import typer
 
-from vit_for_101_food_app.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
+from vit_for_101_food_app.config import (
+    CACHE_DIR,
+    CACHE_JPEG_QUALITY,
+    CACHE_SHORT_SIDE,
+    FOOD101_CLASSES,
+    FOOD101_DIR,
+    FOOD101_IMAGES_DIR,
+    FOOD101_META_DIR,
+    LABEL_MAP,
+    SEED,
+    TRAIN_VAL_MANIFEST,
+    TRAIN_VAL_SPLIT,
+    VAL_FRACTION,
+)
+from vit_for_101_food_app.preprocessing import cache as cache_mod
+from vit_for_101_food_app.preprocessing import raw, splits
 
-app = typer.Typer()
+app = typer.Typer(help="Preparacion del dataset Food-101 para el benchmark.")
 
 
 @app.command()
-def main(
-    # ---- REPLACE DEFAULT PATHS AS APPROPRIATE ----
-    input_path: Path = RAW_DATA_DIR / "dataset.csv",
-    output_path: Path = PROCESSED_DATA_DIR / "dataset.csv",
-    # ----------------------------------------------
+def download(dest: Path = FOOD101_DIR, force: bool = False):
+    """Descarga y extrae Food-101 (~5 GB). Idempotente."""
+    raw.ensure_dataset(dest=dest, force=force)
+    logger.success(f"{raw.disk_usage_gb(dest):.2f} GB en {dest}")
+
+
+@app.command()
+def split(
+    meta_dir: Path = FOOD101_META_DIR,
+    classes_path: Path = FOOD101_CLASSES,
+    csv_path: Path = TRAIN_VAL_SPLIT,
+    manifest_path: Path = TRAIN_VAL_MANIFEST,
+    label_map_path: Path = LABEL_MAP,
+    val_fraction: float = VAL_FRACTION,
+    seed: int = SEED,
 ):
-    # ---- REPLACE THIS WITH YOUR OWN CODE ----
-    logger.info("Processing dataset...")
-    for i in tqdm(range(10), total=10):
-        if i == 5:
-            logger.info("Something happened for iteration 5.")
-    logger.success("Processing dataset complete.")
-    # -----------------------------------------
+    """Recorta el split de validacion de train y escribe los artefactos versionados."""
+    indice = raw.load_index("train", meta_dir=meta_dir)
+    frame = splits.build_split(indice, val_fraction=val_fraction, seed=seed)
+    clases = raw.class_names(classes_path if classes_path.is_file() else meta_dir / "classes.txt")
+    info = splits.write_artifacts(
+        frame,
+        clases,
+        csv_path=csv_path,
+        manifest_path=manifest_path,
+        label_map_path=label_map_path,
+        seed=seed,
+        val_fraction=val_fraction,
+    )
+    typer.echo(f"sha256: {info['csv_sha256']}")
+
+
+@app.command()
+def cache(
+    src_dir: Path = FOOD101_IMAGES_DIR,
+    cache_dir: Path = CACHE_DIR,
+    csv_path: Path = TRAIN_VAL_SPLIT,
+    meta_dir: Path = FOOD101_META_DIR,
+    short_side: int = CACHE_SHORT_SIDE,
+    quality: int = CACHE_JPEG_QUALITY,
+    workers: int = 0,
+    force: bool = False,
+):
+    """Reescala todo el dataset al lado corto configurado. Idempotente."""
+    rels: list[str] = []
+    for nombre in ("train", "val", "test"):
+        rels += splits.load_split(nombre, csv_path=csv_path, meta_dir=meta_dir)["rel"].tolist()
+
+    info = cache_mod.build_cache(
+        sorted(set(rels)),
+        src_dir=src_dir,
+        cache_dir=cache_dir,
+        short_side=short_side,
+        quality=quality,
+        workers=workers or None,
+        force=force,
+    )
+    typer.echo(f"{info['n_imagenes']} imagenes, {cache_mod.disk_usage_mb(cache_dir):.0f} MB")
 
 
 if __name__ == "__main__":

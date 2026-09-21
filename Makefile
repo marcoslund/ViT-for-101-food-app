@@ -62,10 +62,29 @@ create_environment:
 #################################################################################
 
 
-## Make dataset
+## Descarga y extrae Food-101 (~5 GB)
 .PHONY: data
 data: requirements
-	$(PYTHON_INTERPRETER) vit_for_101_food_app/dataset.py
+	$(PYTHON_INTERPRETER) -m vit_for_101_food_app.dataset download
+
+## Genera el split de validacion y el mapa de etiquetas
+.PHONY: split
+split:
+	$(PYTHON_INTERPRETER) -m vit_for_101_food_app.dataset split
+
+## Construye el cache de imagenes reescaladas
+.PHONY: cache
+cache:
+	$(PYTHON_INTERPRETER) -m vit_for_101_food_app.dataset cache
+
+## Verifica que los transforms coincidan con el AutoImageProcessor de cada modelo
+.PHONY: verify
+verify:
+	$(PYTHON_INTERPRETER) -m vit_for_101_food_app.features verify
+
+## Pipeline completo de preprocesamiento
+.PHONY: preprocess
+preprocess: data split cache verify
 
 
 #################################################################################
