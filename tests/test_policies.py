@@ -3,6 +3,7 @@ ProcessorSpec se desvien de lo que el AutoImageProcessor hace de verdad. El prim
 de este archivo es la red de seguridad que cierra ese riesgo."""
 
 import dataclasses
+import pickle
 
 import numpy as np
 from PIL import Image
@@ -134,3 +135,17 @@ def test_politica_desconocida_es_un_error_explicito():
 
 def test_available_lista_las_politicas():
     assert set(policies.available()) == {"eval", "standard", "strong", "resize_only"}
+
+
+@pytest.mark.parametrize("key", list(MODELS))
+@pytest.mark.parametrize("policy", list(policies.POLICIES))
+def test_el_transform_compuesto_es_picklable(key, policy):
+    """DataLoader con num_workers>0 tiene que picklear el Dataset -- transform incluido
+    -- para mandarlo a los worker processes. Con start method "spawn" (default en macOS
+    y Windows) un v2.Lambda(lambda ...) rompe con AttributeError al picklear, y con
+    "fork" (Linux) el bug queda invisible porque el worker hereda la memoria del padre.
+    Esto no depende del start method real de la maquina: pickle.dumps alcanza para
+    detectarlo en cualquier lado."""
+    spec = processors.spec_for(key)
+    t = policies.build_transform(spec, policy)
+    pickle.dumps(t)

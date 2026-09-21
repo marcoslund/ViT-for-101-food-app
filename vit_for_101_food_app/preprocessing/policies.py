@@ -37,6 +37,37 @@ _INTERPOLACION = {
 _RESCALE_ESTANDAR = 1 / 255
 
 
+# Los pasos de la cola de tensor que necesitan un callable (conversion a RGB, rescale
+# no estandar, flip de canales) estan definidos a nivel de modulo, NUNCA como lambda
+# ni como funcion anidada. torch.utils.data.DataLoader con num_workers>0 tiene que
+# picklear el Dataset -- transform incluido -- para mandarlo a los worker processes.
+# En Linux con start method "fork" un lambda funciona porque el worker hereda la
+# memoria del padre, pero en macOS y Windows (y en Linux si se fuerza "spawn") pickle
+# falla ruidoso: "Can't pickle local object ...<lambda>". No "simplificar" esto de
+# vuelta a una lambda: se rompe silenciosamente solo bajo spawn, no en un `python -c`
+# suelto en esta misma maquina.
+def _convertir_a_rgb(imagen):
+    """Paso de PIL antes de ToImage. Ver el comentario en build_transform sobre por
+    que la conversion a RGB tiene que pasar por PIL y no por v2.RGB()."""
+    return imagen.convert("RGB")
+
+
+class _Reescalar:
+    """Multiplica por un rescale_factor no estandar. Clase en vez de lambda para que
+    v2.Lambda(...) sea picklable; el factor viaja como atributo, no como closure."""
+
+    def __init__(self, factor: float):
+        self.factor = factor
+
+    def __call__(self, t):
+        return t * self.factor
+
+
+def _voltear_canales(t):
+    """RGB <-> BGR. Ver ProcessorSpec.do_flip_channel_order."""
+    return t.flip(-3)
+
+
 @dataclass(frozen=True)
 class Policy:
     """Una politica es la parte geometrica del pipeline, y nada mas."""
@@ -138,7 +169,7 @@ def _cola_de_tensor(spec: ProcessorSpec) -> list:
         ops.append(v2.ToDtype(torch.float32, scale=True))
     else:
         ops.append(v2.ToDtype(torch.float32, scale=False))
-        ops.append(v2.Lambda(lambda t, f=spec.rescale_factor: t * f))
+        ops.append(v2.Lambda(_Reescalar(spec.rescale_factor)))
 
     # Solo si do_normalize es verdadero. NUNCA inferirlo de image_mean/image_std:
     # MobileViT los declara y no normaliza. Ver processors.spec_for.
@@ -146,7 +177,7 @@ def _cola_de_tensor(spec: ProcessorSpec) -> list:
         ops.append(v2.Normalize(mean=list(spec.image_mean), std=list(spec.image_std)))
 
     if spec.do_flip_channel_order:
-        ops.append(v2.Lambda(lambda t: t.flip(-3)))
+        ops.append(v2.Lambda(_voltear_canales))
 
     return ops
 
@@ -168,7 +199,7 @@ def build_transform(spec: ProcessorSpec, policy: str = "standard") -> Callable:
             # que es por lo que el EDA lo pide asi y no como operacion sobre tensor. Para
             # una imagen ya RGB, convert("RGB") no toca los pixeles, asi que esto no
             # afecta la equivalencia con el processor.
-            v2.Lambda(lambda img: img.convert("RGB")),
+            v2.Lambda(_convertir_a_rgb),
             v2.ToImage(),  # PIL -> tensor uint8 antes de la geometria, como HuggingFace
             *elegida.geometry(spec, _interp(spec)),
             *_cola_de_tensor(spec),
