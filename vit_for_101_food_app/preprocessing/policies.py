@@ -79,7 +79,10 @@ class Policy:
 
 
 def _interp(spec: ProcessorSpec) -> InterpolationMode:
-    return _INTERPOLACION.get(spec.resample, InterpolationMode.BILINEAR)
+    # Indexacion directa, no .get(..., BILINEAR): un codigo de resample desconocido
+    # tiene que fallar ruidoso, no degradarse en silencio a un filtro distinto del
+    # que declara el checkpoint.
+    return _INTERPOLACION[spec.resample]
 
 
 def _geometria_eval(spec: ProcessorSpec, interp: InterpolationMode) -> list:
@@ -120,8 +123,13 @@ def _geometria_strong(spec: ProcessorSpec, interp: InterpolationMode) -> list:
 
 
 def _geometria_resize_only(spec: ProcessorSpec, interp: InterpolationMode) -> list:
-    """Ablacion de la seccion 8 #5 del EDA: sin recorte, para descartar que las
+    """Ablacion de la seccion 7 #5 del EDA: sin recorte, para descartar que las
     diferencias entre modelos vengan de cuanta imagen descarta el CenterCrop.
+
+    Para un modelo que ya no recorta en 'eval' (spec.resize_shortest is None, hoy
+    ViT) esto da exactamente el mismo resultado que 'eval': no hay CenterCrop que
+    quitar. La ablacion solo tiene contenido para modelos que si recortan (hoy
+    MobileViT). Ver test_resize_only_es_identico_a_eval_solo_si_no_hay_crop.
 
     antialias=True explicito por la misma razon que en _geometria_eval: consistencia
     entre las tres geometrias, para que ninguna quede leyendo el default de la libreria.
@@ -149,7 +157,12 @@ POLICIES: dict[str, Policy] = {
     "resize_only": Policy(
         name="resize_only",
         geometry=_geometria_resize_only,
-        descripcion="sin recorte; ablacion de la seccion 8 #5 del EDA",
+        descripcion=(
+            "sin recorte; ablacion de la seccion 7 #5 del EDA. Para un modelo sin "
+            "center crop (resize_shortest is None, p.ej. ViT) esto es bit a bit "
+            "identico a 'eval': no hay nada que ablacionar. Solo difiere de 'eval' "
+            "para modelos que si recortan (p.ej. MobileViT)"
+        ),
     ),
 }
 

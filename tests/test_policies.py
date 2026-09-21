@@ -119,13 +119,55 @@ def test_standard_es_estocastica(imagen):
     assert not torch.allclose(t(imagen), t(imagen))
 
 
-def test_resize_only_no_recorta(imagen):
-    """La ablacion de la seccion 8 #5 del EDA: sin CenterCrop no se pierde area."""
-    spec = processors.spec_for("mobilevit")
+@pytest.mark.parametrize("key", list(MODELS))
+def test_resize_only_es_identico_a_eval_solo_si_no_hay_crop(key, imagen):
+    """La ablacion de la seccion 7 #5 del EDA: sin CenterCrop no se pierde area.
+
+    defecto 3 del task brief: el test original solo corria sobre mobilevit, asi que
+    nunca ejercito el caso ViT (resize_shortest is None), donde 'resize_only' y 'eval'
+    son bit a bit el mismo pipeline -- no hay CenterCrop que ablacionar. Si alguien
+    programara un 'resize_only' para los dos modelos, ViT devolveria un duplicado
+    exacto de su corrida 'eval' y nada lo señalaria sin este test parametrizado.
+
+    La propiedad real por modelo: identico a 'eval' si y solo si
+    spec.resize_shortest is None; distinto en caso contrario.
+    """
+    spec = processors.spec_for(key)
     t = policies.build_transform(spec, "resize_only")(imagen)
     eval_t = policies.build_transform(spec, "eval")(imagen)
     assert t.shape == eval_t.shape
-    assert not torch.allclose(t, eval_t), "recortar y no recortar no pueden dar lo mismo"
+
+    if spec.resize_shortest is None:
+        torch.testing.assert_close(t, eval_t)
+    else:
+        assert not torch.allclose(t, eval_t), "recortar y no recortar no pueden dar lo mismo"
+
+
+@pytest.mark.parametrize("key", list(MODELS))
+def test_strong_agrega_randaugment_y_randomerasing_sobre_standard(key):
+    """Item diferido del task brief: nada probaba que 'strong' realmente contuviera
+    RandAugment y RandomErasing, solo que la salida fuera estocastica -- algo que
+    'standard' (RandomResizedCrop + flip) ya garantiza por si solo. Un typo que tirara
+    ``after_tensor`` de la Policy (ver policies.POLICIES["strong"]) dejaria 'strong'
+    identica a 'standard' en contenido, pero seguiria siendo estocastica: los tests
+    existentes de aleatoriedad no lo hubieran notado. Esto inspecciona los tipos reales
+    de los pasos compuestos, no solo si el resultado varia."""
+    spec = processors.spec_for(key)
+    standard = policies.build_transform(spec, "standard")
+    strong = policies.build_transform(spec, "strong")
+
+    tipos_standard = [type(paso).__name__ for paso in standard.transforms]
+    tipos_strong = [type(paso).__name__ for paso in strong.transforms]
+
+    assert "RandomResizedCrop" in tipos_standard
+    assert "RandomHorizontalFlip" in tipos_standard
+    assert "RandAugment" not in tipos_standard
+    assert "RandomErasing" not in tipos_standard
+
+    assert "RandAugment" in tipos_strong
+    assert "RandomErasing" in tipos_strong
+    # 'strong' es 'standard' con augmentation extra, no una geometria distinta.
+    assert set(tipos_standard) <= set(tipos_strong)
 
 
 def test_politica_desconocida_es_un_error_explicito():
