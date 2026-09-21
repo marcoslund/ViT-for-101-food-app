@@ -84,6 +84,16 @@ def spec_for(key: str) -> ProcessorSpec:
     # do_normalize puede venir None (MobileViT). None NO significa "usa el default":
     # significa que no normaliza. La presencia de image_mean/image_std no alcanza para
     # inferirlo -- MobileViT los declara y aun asi no normaliza.
+
+    # Para campos numericos no se puede usar 'or' porque 0 es un valor valido.
+    # resample=0 es PILImageResampling.NEAREST y rescale_factor=0 es legitimo.
+    # Explicitamente revisar None, no falsy.
+    resample_val = d.get("resample")
+    resample_val = 2 if resample_val is None else int(resample_val)
+
+    rescale_val = d.get("rescale_factor")
+    rescale_val = 1 / 255 if rescale_val is None else float(rescale_val)
+
     return ProcessorSpec(
         key=key,
         checkpoint=MODELS[key],
@@ -91,8 +101,8 @@ def spec_for(key: str) -> ProcessorSpec:
         size=_caja(d.get("size")) or {},
         do_center_crop=bool(d.get("do_center_crop") or False),
         crop_size=_caja(d.get("crop_size")),
-        resample=int(d.get("resample") or 2),
-        rescale_factor=float(d.get("rescale_factor") or 1 / 255),
+        resample=resample_val,
+        rescale_factor=rescale_val,
         do_normalize=bool(d.get("do_normalize") or False),
         image_mean=_tupla(d.get("image_mean")),
         image_std=_tupla(d.get("image_std")),

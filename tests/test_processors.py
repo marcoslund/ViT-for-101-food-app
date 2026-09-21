@@ -92,3 +92,48 @@ def test_all_specs_cubre_el_registry():
 def test_clave_desconocida_es_un_error_explicito():
     with pytest.raises(KeyError, match="mobilenet"):
         processors.spec_for("mobilenet")
+
+
+def test_resample_cero_no_se_descarta_por_or(monkeypatch):
+    """La trampa de la coercion: `0 or 2` descarta el 0 valido.
+
+    resample=0 es PILImageResampling.NEAREST, un filtro de remuestreo perfectamente
+    valido. Si el checkpoint lo declara, no debe ser silenciosamente reemplazado por
+    el default (2, BILINEAR). Esto solo es un bug dormido hoy porque ambos modelos
+    reportan resample truthy; un checkpoint futuro podria declarar 0 y romper silente.
+
+    El test monkeypatches load_processor para devolver un stub con resample=0,
+    luego verifica que spec_for() lo preserva.
+    """
+
+    class StubProcessor:
+        def to_dict(self):
+            return {
+                "resample": 0,
+                "rescale_factor": 0.0,
+                "do_resize": True,
+                "size": {"height": 224, "width": 224},
+                "do_center_crop": False,
+                "do_normalize": False,
+            }
+
+    # Para evitar cache, usamos una clave que no esta en MODELS.
+    # spec_for() validara la clave y levantara KeyError. Monkeyparchar load_processor
+    # para que no lo intente, sino que devuelva nuestro stub.
+
+    def fake_load_processor(key):
+        if key == "test_resample_zero":
+            return StubProcessor()
+        return processors.load_processor.__wrapped__(key)
+
+    monkeypatch.setattr(processors, "load_processor", fake_load_processor)
+
+    # Tambien monkeyparchar MODELS para que pase la validacion de clave.
+    original_models = processors.MODELS
+    monkeypatch.setattr(
+        processors, "MODELS", {**original_models, "test_resample_zero": "fake/model"}
+    )
+
+    spec = processors.spec_for("test_resample_zero")
+    assert spec.resample == 0, "resample=0 debe preservarse, no reemplazarse por 2"
+    assert spec.rescale_factor == 0.0, "rescale_factor=0.0 debe preservarse"
