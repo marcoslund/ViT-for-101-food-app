@@ -6,13 +6,12 @@
   "imagenes_por_clase": 25,
   "n_clases": 101,
   "n_imagenes": 2525,
-  "bytes_totales": 126560114,
   "exclusiones": {
     "corruptas_o_ilegibles": [],
     "fuga_train_test": []
   },
   "muestra_inspeccionada": 6060,
   "nota": "Las exclusiones se detectaron sobre una muestra estratificada, no sobre el test completo.",
-  "csv_sha256": "c87592c11e1b336803cc40544a183fee936f77c916a225fa75e98b64989f5058",
-  "generado": "2026-09-14 03:38:53"
+  "csv_sha256": "75326e66c5cdc05aa490625827a14a3ee16e50cd7338524343f4f6fe474a4427",
+  "generado": "2026-09-21 03:26:14"
 }
