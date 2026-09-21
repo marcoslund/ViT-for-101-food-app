@@ -39,8 +39,14 @@ def food101_falso(tmp_path):
     (meta / "test.txt").write_text("\n".join(test_rels) + "\n")
     (meta / "classes.txt").write_text("\n".join(CLASES) + "\n")
 
-    return {"root": root, "meta": meta, "images": images,
-            "train_rels": train_rels, "test_rels": test_rels, "clases": CLASES}
+    return {
+        "root": root,
+        "meta": meta,
+        "images": images,
+        "train_rels": train_rels,
+        "test_rels": test_rels,
+        "clases": CLASES,
+    }
 
 
 @pytest.fixture
@@ -48,11 +54,15 @@ def manifiesto_con_exclusiones(tmp_path, food101_falso):
     """Manifiesto al estilo del EDA, excluyendo dos imagenes conocidas de train."""
     excluidas = food101_falso["train_rels"][:2]
     ruta = tmp_path / "benchmark_subset_manifest.json"
-    ruta.write_text(json.dumps({
-        "seed": 42,
-        "exclusiones": {
-            "corruptas_o_ilegibles": [excluidas[0]],
-            "fuga_train_test": [excluidas[1]],
-        },
-    }))
+    ruta.write_text(
+        json.dumps(
+            {
+                "seed": 42,
+                "exclusiones": {
+                    "corruptas_o_ilegibles": [excluidas[0]],
+                    "fuga_train_test": [excluidas[1]],
+                },
+            }
+        )
+    )
     return {"path": ruta, "excluidas": set(excluidas)}

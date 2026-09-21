@@ -9,10 +9,16 @@ pytest.importorskip("torch")
 pytest.importorskip("torchvision")
 pytest.importorskip("transformers")
 
-import torch  # noqa: E402
+import torch
 
-from vit_for_101_food_app.config import MODELS  # noqa: E402
-from vit_for_101_food_app.preprocessing import loaders, policies, processors, raw, splits  # noqa: E402
+from vit_for_101_food_app.config import MODELS
+from vit_for_101_food_app.preprocessing import (
+    loaders,
+    policies,
+    processors,
+    raw,
+    splits,
+)
 
 
 @pytest.fixture

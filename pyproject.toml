@@ -73,7 +73,7 @@ deep = [
 [tool.ruff]
 line-length = 99
 src = ["vit_for_101_food_app"]
-include = ["pyproject.toml", "vit_for_101_food_app/**/*.py"]
+include = ["pyproject.toml", "vit_for_101_food_app/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint]
 extend-select = ["I"]  # Add import sorting
