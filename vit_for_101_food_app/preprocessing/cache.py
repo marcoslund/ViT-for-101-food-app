@@ -13,6 +13,7 @@ from concurrent.futures import ProcessPoolExecutor
 import json
 import os
 from pathlib import Path
+import tempfile
 
 from loguru import logger
 from PIL import Image
@@ -21,11 +22,12 @@ from tqdm import tqdm
 from vit_for_101_food_app.config import (
     CACHE_DIR,
     CACHE_JPEG_QUALITY,
+    CACHE_MANIFEST,
     CACHE_SHORT_SIDE,
     FOOD101_IMAGES_DIR,
 )
 
-MANIFIESTO = "cache_manifest.json"
+MANIFIESTO = CACHE_MANIFEST.name
 
 
 def source_path(rel: str, src_dir: Path = FOOD101_IMAGES_DIR) -> Path:
@@ -60,7 +62,23 @@ def resize_one(
                 nuevo = (round(im.width * escala), round(im.height * escala))
                 im = im.resize(nuevo, Image.BILINEAR)
             destino.parent.mkdir(parents=True, exist_ok=True)
-            im.save(destino, "JPEG", quality=quality, optimize=True)
+            # Escribir a archivo temporal en el mismo directorio, luego reemplazar
+            # atomicamente. Si el proceso muere durante save(), queda un .tmp en lugar
+            # de un JPEG corrompido en la ruta final. No hay garanta para archivos
+            # corrompidos preexistentes de corridas antiguas no-atomicas.
+            fd, temp_path = tempfile.mkstemp(
+                suffix=".tmp", dir=destino.parent, prefix=destino.stem + "_"
+            )
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    im.save(f, "JPEG", quality=quality, optimize=True)
+                os.replace(temp_path, destino)
+            except Exception:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+                raise
     except Exception as exc:  # noqa: BLE001 archivo faltante, truncado o ilegible
         logger.warning(f"no se pudo cachear {rel}: {type(exc).__name__}: {exc}")
         return rel, "fallida"
