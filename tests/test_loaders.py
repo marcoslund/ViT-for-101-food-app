@@ -1,0 +1,272 @@
+"""El Dataset devuelve exactamente las claves que espera el Trainer de HuggingFace,
+para que el loop de entrenamiento no necesite adaptadores."""
+
+import multiprocessing as mp
+
+import pytest
+
+pytest.importorskip("torch")
+pytest.importorskip("torchvision")
+pytest.importorskip("transformers")
+
+import torch  # noqa: E402
+
+from vit_for_101_food_app.config import MODELS  # noqa: E402
+from vit_for_101_food_app.preprocessing import loaders, policies, processors, raw, splits  # noqa: E402
+
+
+@pytest.fixture
+def frame(food101_falso):
+    return raw.load_index("train", meta_dir=food101_falso["meta"], exclusions=set())
+
+
+@pytest.fixture
+def label2id(food101_falso):
+    return splits.build_label_map(food101_falso["clases"])["label2id"]
+
+
+def _dataset(frame, food101_falso, label2id, key="vit", policy="eval"):
+    return loaders.Food101Dataset(
+        frame,
+        images_root=food101_falso["images"],
+        transform=policies.build_transform(processors.spec_for(key), policy),
+        label2id=label2id,
+    )
+
+
+def test_len_es_el_del_frame(frame, food101_falso, label2id):
+    assert len(_dataset(frame, food101_falso, label2id)) == len(frame)
+
+
+def test_item_tiene_las_claves_del_trainer(frame, food101_falso, label2id):
+    item = _dataset(frame, food101_falso, label2id)[0]
+    assert set(item) == {"pixel_values", "labels"}
+
+
+@pytest.mark.parametrize("key", list(MODELS))
+def test_pixel_values_tiene_la_resolucion_nativa(key, frame, food101_falso, label2id):
+    item = _dataset(frame, food101_falso, label2id, key=key)[0]
+    assert item["pixel_values"].shape == processors.spec_for(key).input_shape
+    assert item["pixel_values"].dtype == torch.float32
+
+
+def test_labels_son_indices_validos(frame, food101_falso, label2id):
+    ds = _dataset(frame, food101_falso, label2id)
+    etiquetas = {ds[i]["labels"] for i in range(len(ds))}
+    assert etiquetas <= set(label2id.values())
+    assert all(isinstance(e, int) for e in etiquetas)
+
+
+def test_la_etiqueta_corresponde_a_la_clase_de_la_fila(frame, food101_falso, label2id):
+    ds = _dataset(frame, food101_falso, label2id)
+    for i in (0, len(ds) // 2, len(ds) - 1):
+        assert ds[i]["labels"] == label2id[frame["class_dir"].iloc[i]]
+
+
+def test_collate_arma_un_batch(frame, food101_falso, label2id):
+    ds = _dataset(frame, food101_falso, label2id)
+    batch = loaders.collate([ds[0], ds[1], ds[2]])
+    assert batch["pixel_values"].shape[0] == 3
+    assert batch["labels"].shape == (3,)
+    assert batch["labels"].dtype == torch.long
+
+
+def test_un_batch_del_dataloader_entero(frame, food101_falso, label2id):
+    ds = _dataset(frame, food101_falso, label2id)
+    dl = torch.utils.data.DataLoader(ds, batch_size=4, collate_fn=loaders.collate)
+    batch = next(iter(dl))
+    assert batch["pixel_values"].shape == (4, *processors.spec_for("vit").input_shape)
+
+
+def test_lee_del_cache_cuando_se_le_pide(tmp_path, frame, food101_falso, label2id):
+    from vit_for_101_food_app.preprocessing import cache
+
+    destino = tmp_path / "cache"
+    cache.build_cache(
+        frame["rel"].tolist(),
+        src_dir=food101_falso["images"],
+        cache_dir=destino,
+        short_side=64,
+        quality=95,
+        workers=1,
+    )
+    ds = loaders.Food101Dataset(
+        frame,
+        images_root=destino,
+        transform=policies.build_transform(processors.spec_for("vit"), "eval"),
+        label2id=label2id,
+    )
+    assert ds[0]["pixel_values"].shape == processors.spec_for("vit").input_shape
+
+
+def test_build_dataloaders_arma_los_tres_splits(tmp_path, food101_falso):
+    csv = tmp_path / "s.csv"
+    indice = raw.load_index("train", meta_dir=food101_falso["meta"], exclusions=set())
+    split = splits.build_split(indice, val_fraction=0.10, seed=42)
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+
+    dls = loaders.build_dataloaders(
+        "vit",
+        source="raw",
+        batch_size=4,
+        num_workers=0,
+        images_root=food101_falso["images"],
+        csv_path=csv,
+        label_map_path=tmp_path / "l.json",
+        meta_dir=food101_falso["meta"],
+        exclusions=set(),
+    )
+    assert set(dls) == {"train", "val", "test"}
+    for dl in dls.values():
+        batch = next(iter(dl))
+        assert batch["pixel_values"].shape[1:] == processors.spec_for("vit").input_shape
+
+
+def test_val_y_test_no_usan_augmentation(tmp_path, food101_falso):
+    """Una politica estocastica en validacion haria la metrica irreproducible."""
+    csv = tmp_path / "s.csv"
+    indice = raw.load_index("train", meta_dir=food101_falso["meta"], exclusions=set())
+    split = splits.build_split(indice, val_fraction=0.10, seed=42)
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+
+    dls = loaders.build_dataloaders(
+        "vit",
+        train_policy="standard",
+        source="raw",
+        batch_size=2,
+        num_workers=0,
+        images_root=food101_falso["images"],
+        csv_path=csv,
+        label_map_path=tmp_path / "l.json",
+        meta_dir=food101_falso["meta"],
+        exclusions=set(),
+    )
+    a = next(iter(dls["val"]))["pixel_values"]
+    b = next(iter(dls["val"]))["pixel_values"]
+    torch.testing.assert_close(a, b)
+
+
+def test_modelo_desconocido_es_un_error_explicito(tmp_path, food101_falso):
+    with pytest.raises(KeyError):
+        loaders.build_dataloaders("resnet", source="raw", images_root=food101_falso["images"])
+
+
+def test_source_invalido_es_un_error_explicito(tmp_path, food101_falso):
+    with pytest.raises(ValueError, match="source"):
+        loaders.build_dataloaders(
+            "vit",
+            source="drive",
+            images_root=food101_falso["images"],
+        )
+
+
+def test_num_workers_explicito_en_cero_no_usa_workers(monkeypatch, tmp_path, food101_falso):
+    """num_workers=0 explicito tiene que respetarse literal: 0 or 4 == 4 es el bug que
+    esto pisa (ver defecto 1 del task brief). Si build_dataloaders volviera a calcular
+    ``num_workers or 4``, este test construiria el DataLoader con 4 procesos en vez de 0
+    y lo detectariamos interceptando el kwarg real que recibe DataLoader.__init__."""
+    csv = tmp_path / "s.csv"
+    indice = raw.load_index("train", meta_dir=food101_falso["meta"], exclusions=set())
+    split = splits.build_split(indice, val_fraction=0.10, seed=42)
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+
+    vistos = []
+    original_init = torch.utils.data.DataLoader.__init__
+
+    def espia(self, *args, **kwargs):
+        vistos.append(kwargs.get("num_workers"))
+        return original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(torch.utils.data.DataLoader, "__init__", espia)
+
+    loaders.build_dataloaders(
+        "vit",
+        source="raw",
+        batch_size=2,
+        num_workers=0,
+        images_root=food101_falso["images"],
+        csv_path=csv,
+        label_map_path=tmp_path / "l.json",
+        meta_dir=food101_falso["meta"],
+        exclusions=set(),
+        splits_to_load=("val",),
+    )
+    assert vistos == [0]
+
+
+def test_num_workers_none_usa_el_default_de_cuatro(tmp_path, food101_falso, monkeypatch):
+    """num_workers=None (el default del parametro) tiene que resolver a 4, sin importar
+    ``source``: el conteo de workers no tiene nada que ver con de donde se lee la imagen."""
+    csv = tmp_path / "s.csv"
+    indice = raw.load_index("train", meta_dir=food101_falso["meta"], exclusions=set())
+    split = splits.build_split(indice, val_fraction=0.10, seed=42)
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+
+    vistos = []
+    original_init = torch.utils.data.DataLoader.__init__
+
+    def espia(self, *args, **kwargs):
+        vistos.append(kwargs.get("num_workers"))
+        return original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(torch.utils.data.DataLoader, "__init__", espia)
+
+    loaders.build_dataloaders(
+        "vit",
+        source="raw",
+        images_root=food101_falso["images"],
+        csv_path=csv,
+        label_map_path=tmp_path / "l.json",
+        meta_dir=food101_falso["meta"],
+        exclusions=set(),
+        splits_to_load=("val",),
+    )
+    assert vistos == [4]
+
+
+def test_dataloader_con_dos_workers_itera_un_batch(frame, food101_falso, label2id):
+    """Con num_workers>0 el Dataset (transform incluido) se manda a procesos hijos por
+    pickle. build_transform (Task 5) compone v2.Lambda con closures para RGB, rescale
+    y flip de canales -- eso no es picklable bajo el start method 'spawn'. Este test
+    corre el DataLoader de verdad, en vez de asumir que num_workers>0 funciona, y pina
+    el comportamiento segun el start method vigente en vez de asumir uno fijo: bajo
+    'spawn' (default de macOS y, desde Python 3.14, tambien de Linux) falla con
+    AttributeError al picklear el lambda; bajo 'fork' (default historico de Linux)
+    hereda memoria en vez de picklear, y el batch se arma normalmente. Si alguien
+    reescribe build_transform sin closures, la rama 'spawn' de este test empieza a
+    fallar (porque deja de levantar la excepcion esperada) y avisa que hay que
+    actualizarlo."""
+    ds = _dataset(frame, food101_falso, label2id)
+    dl = torch.utils.data.DataLoader(ds, batch_size=4, num_workers=2, collate_fn=loaders.collate)
+    metodo_arranque = mp.get_start_method(allow_none=False)
+
+    if metodo_arranque == "spawn":
+        with pytest.raises(AttributeError, match="pickle"):
+            next(iter(dl))
+    else:
+        batch = next(iter(dl))
+        assert batch["pixel_values"].shape == (4, *processors.spec_for("vit").input_shape)
