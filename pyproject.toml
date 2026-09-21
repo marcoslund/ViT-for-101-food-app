@@ -5,7 +5,7 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "vit_for_101_food_app"
 version = "0.0.1"
-description = "Benchmark de transformers de vision sobre Food-101: ViT servido por API vs MobileViT en dispositivo. Vision por Computadora III - CEIA / MIA (FIUBA)."
+description = "Benchmark de transformers de vision sobre Food-101: ViT (baseline, razonado como servido por API) vs MobileViT en dispositivo, entrenados y evaluados localmente. Vision por Computadora III - CEIA / MIA (FIUBA)."
 authors = [
   { name = "Antonella Nerea Gambarte" },
   { name = "Florencia Priscilla Vela" },

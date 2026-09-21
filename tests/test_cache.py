@@ -52,12 +52,12 @@ def test_preserva_el_aspect_ratio(construido, food101_falso):
 def test_las_imagenes_del_cache_son_rgb(construido):
     for rel in construido["rels"]:
         with Image.open(cache.cached_path(rel, cache_dir=construido["dir"])) as im:
-            assert im.convert("RGB").mode == "RGB"
             assert im.mode == "RGB"
 
 
 def test_convierte_a_rgb_lo_que_no_lo_es(tmp_path, food101_falso):
-    """Grayscale y paleta rompen un DataLoader que asuma 3 canales (seccion 4 del EDA)."""
+    """Grayscale y paleta rompen un DataLoader que asuma 3 canales (hallazgo #7,
+    seccion 3 del EDA)."""
     rel = "apple_pie/gris"
     Image.new("L", (300, 200), 128).save(food101_falso["images"] / f"{rel}.jpg")
     destino = tmp_path / "c"

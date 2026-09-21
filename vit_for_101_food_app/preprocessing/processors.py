@@ -3,7 +3,7 @@
 Este es el UNICO modulo del proyecto que importa ``transformers``, y el unico que
 conoce resoluciones, medias y desvios. Todo se lee del checkpoint en runtime: escribir
 esos valores a mano es exactamente como se arruina una comparacion entre arquitecturas
-(ver la seccion 8 del EDA).
+(hallazgo #4, seccion 7 del EDA).
 
 Los processors de distintas arquitecturas NO comparten estructura. Algunos hacen un
 resize cuadrado directo, otros redimensionan el lado corto y despues recortan al centro;

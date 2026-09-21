@@ -11,7 +11,7 @@ from pathlib import Path
 
 import typer
 
-from vit_for_101_food_app.config import CACHE_DIR, FIGURES_DIR, MODELS
+from vit_for_101_food_app.config import CACHE_DIR, FIGURES_DIR, FOOD101_IMAGES_DIR, MODELS
 
 app = typer.Typer(help="Transforms de preprocesamiento: verificacion y preview.")
 
@@ -53,19 +53,29 @@ def preview(
     policy: str = "standard",
     n: int = 6,
     out_dir: Path = FIGURES_DIR,
+    source: str = "cache",
 ):
-    """Escribe una grilla antes/despues en reports/figures/."""
+    """Escribe una grilla antes/despues en reports/figures/.
+
+    ``source`` elige de donde se leen las imagenes: ``cache`` (default, requiere
+    ``make cache`` corrido antes) o ``raw`` (JPEG originales, utilizable antes de que
+    el cache exista).
+    """
     import matplotlib.pyplot as plt
     import torch
 
     from vit_for_101_food_app.preprocessing import loaders, policies, processors, splits
+
+    if source not in ("cache", "raw"):
+        raise typer.BadParameter(f"source invalido: {source!r}; esperaba 'cache' o 'raw'")
+    images_root = CACHE_DIR if source == "cache" else FOOD101_IMAGES_DIR
 
     spec = processors.spec_for(model)
     frame = splits.load_split("val").head(n)
     _, label2id = splits.load_label_map()
     dataset = loaders.Food101Dataset(
         frame,
-        images_root=CACHE_DIR,
+        images_root=images_root,
         transform=policies.build_transform(spec, policy),
         label2id=label2id,
     )

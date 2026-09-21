@@ -64,7 +64,7 @@ create_environment:
 
 ## Descarga y extrae Food-101 (~5 GB)
 .PHONY: data
-data: requirements
+data:
 	$(PYTHON_INTERPRETER) -m vit_for_101_food_app.dataset download
 
 ## Genera el split de validacion y el mapa de etiquetas

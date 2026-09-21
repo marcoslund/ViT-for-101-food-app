@@ -73,14 +73,15 @@ diseño del benchmark.
 |---|---|---|
 | 1. Estructura y splits | ¿Está balanceado? | Elección de métrica (top-1 vs macro-F1) |
 | 2. Geometría | ¿Cuánta imagen se pierde al recortar a 224 / 256? | Política de preprocesamiento por modelo |
-| 3. Costo de transporte | ¿Cuántos MB hay que mandar a la API? | Tamaño del payload y costo del experimento |
-| 4. Integridad | ¿Hay imágenes rotas o en modos raros? | Lista de exclusión del dataloader |
-| 5. Ruido y duplicados | ¿Hay mislabels o fuga train↔test? | Validez del set de evaluación |
-| 6. Confusión entre clases | ¿Dónde está la dificultad real? | Hipótesis sobre dónde debería ganar el modelo servido por API |
-| 7. Subset de benchmark | ¿Sobre qué imágenes exactas evaluamos? | Manifiesto reproducible y acotado en costo |
-| 8. Conclusiones | — | Tabla hallazgo → decisión de diseño |
+| 3. Integridad | ¿Hay imágenes rotas o en modos raros? | Lista de exclusión del dataloader |
+| 4. Ruido y duplicados | ¿Hay mislabels o fuga train↔test? | Validez del set de evaluación |
+| 5. Confusión entre clases | ¿Dónde está la dificultad real? | Hipótesis sobre dónde debería ganar el modelo servido por API |
+| 6. Subset de benchmark | ¿Sobre qué imágenes exactas evaluamos? | Manifiesto reproducible y acotado en costo |
+| 7. Conclusiones | — | Tabla hallazgo → decisión de diseño |
 
-El notebook descarga y extrae Food-101 por su cuenta. La **sección 6** usa CLIP ViT-B/32 y necesita
+(La sección 0, Setup, no está en la tabla: prepara el entorno, no responde una pregunta de diseño.)
+
+El notebook descarga y extrae Food-101 por su cuenta. La **sección 5** usa CLIP ViT-B/32 y necesita
 GPU: en Colab, *Entorno de ejecución → Cambiar tipo de entorno → GPU (T4)*. CLIP es solo el
 instrumento de medición del EDA; no compite en el benchmark.
 
@@ -92,9 +93,9 @@ una muestra estratificada por clase.
 
 | Parámetro | Default | Efecto |
 |---|---|---|
-| `N_PER_CLASS_INSPECT` | 60 | Integridad, color, nitidez y hashes (§4-§5) |
-| `N_PER_CLASS_CLIP` | 30 | Embeddings CLIP (§6) |
-| `N_PER_CLASS_BENCH` | 25 | Tamaño del subset de evaluación (§7) |
+| `N_PER_CLASS_INSPECT` | 60 | Integridad, color, nitidez y hashes (§3-§4) |
+| `N_PER_CLASS_CLIP` | 30 | Embeddings CLIP (§5) |
+| `N_PER_CLASS_BENCH` | 25 | Tamaño del subset de evaluación (§6) |
 
 Si vas a correrlo más de una vez, poné `USE_DRIVE_CACHE = True`: el `.tar.gz` de 5 GB queda
 cacheado en Drive y las sesiones siguientes no lo vuelven a descargar.
@@ -106,7 +107,7 @@ entrada del notebook de benchmark:
 
 | Archivo | Contenido |
 |---|---|
-| `benchmark_subset.csv` | Manifiesto de evaluación: imagen, clase, margen de dificultad, tercil, bytes |
+| `benchmark_subset.csv` | Manifiesto de evaluación: imagen, clase, margen de dificultad, tercil |
 | `benchmark_subset_manifest.json` | Semilla, exclusiones, conteos y `sha256` del CSV |
 | `class_difficulty.csv` | Ranking de dificultad de las 101 clases con su vecino más confundible |
 
@@ -120,18 +121,15 @@ ranking de dificultad.
 
 ### Guardarlos desde Colab
 
-*Guardar una copia en GitHub* commitea **solo el `.ipynb`**. Los artefactos se generan en
-`/content/outputs`, que es disco efímero del runtime. La **sección 9** del notebook los persiste en
-`data/processed/` del repo, usando un token leído de los Secrets de Colab.
+*Guardar una copia en GitHub* commitea **solo el `.ipynb`**. Los artefactos (`data/processed/*.csv`,
+`*.json`) se generan en disco efímero del runtime de Colab y no hay ninguna celda que los suba por su
+cuenta: el propio notebook no tiene ningún paso que hable con git o con un token.
 
-Configuración, una sola vez:
-
-1. Crear un [fine-grained PAT](https://github.com/settings/personal-access-tokens/new) con
-   *Repository access* limitado a este repo y permiso **Contents: Read and write**.
-2. En Colab: barra izquierda → icono de llave → secreto `GITHUB_TOKEN` con acceso al notebook.
-
-La celda toca únicamente `data/processed/`, así que no compite con el guardado del notebook, y es
-idempotente: si no cambió nada, no crea un commit vacío.
+Lo que se hace en la práctica, y lo que muestra el historial de commits de este repo (`Corrida del
+EDA desde Colab`, `Artefactos del EDA regenerados en la corrida de Colab`): después de correr el
+notebook completo en Colab, se descargan los archivos de `data/processed/` (panel de archivos de
+Colab, o vía Drive si `USE_DRIVE_CACHE = True`) y se commitean desde el checkout local, como
+cualquier otro cambio. No hace falta crear tokens ni configurar secrets para esto.
 
 ## Preprocesamiento
 
@@ -151,6 +149,12 @@ geometría operando sobre tensores — necesario para poder aplicar augmentation
 `torchvision.transforms.v2` — y `make verify` comprueba que ambos coinciden. En la corrida de
 verificación local la diferencia máxima medida fue `1.19e-07` para ViT y `0.0` para MobileViT
 (orden del épsilon de `float32`, no una aproximación visual).
+
+El `AutoImageProcessor` real de `google/vit-base-patch16-224-in21k` hace un **resize cuadrado
+directo** a 224×224 (`do_center_crop=False`), no `Resize(256) → CenterCrop(224)`. La sección 2 del
+EDA todavía asume ese segundo pipeline por analogía con otros ViT; quedó desactualizada frente a lo
+que mide `preprocessing.processors.ficha_tecnica()` (ver `notebooks/2.0-preprocessing.ipynb`,
+sección 3) y falta revisarla — no se toca acá porque el EDA está fuera de alcance de este cambio.
 
 Esa equivalencia es lo que permite dejar a la vista una diferencia real entre modelos sin
 "corregirla": MobileViT recibe sus canales en **BGR** y **no normaliza**, mientras que ViT recibe
@@ -198,7 +202,7 @@ source .venv/bin/activate
 make requirements           # uv sync
 ```
 
-`torch` y `transformers` pesan ~2.5 GB y solo hacen falta para la §6 del EDA, para el
+`torch` y `transformers` pesan ~2.5 GB y solo hacen falta para la §5 del EDA, para el
 preprocesamiento (`make verify`, y las secciones 3 en adelante del notebook de preprocesamiento) y
 para el entrenamiento. Van en un extra aparte:
 

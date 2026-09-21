@@ -39,6 +39,19 @@ SEED = 42
 # porque escribirlo a mano es exactamente como se rompe la comparacion entre modelos.
 # Sumar una arquitectura al benchmark es agregar una linea aca: los tests estan
 # parametrizados sobre este dict y la cubren solos.
+#
+# vit = "google/vit-base-patch16-224-in21k", NO "google/vit-base-patch16-224":
+# el EDA (notebooks/1.0-eda-food101.ipynb, "Proximos pasos") nombro el segundo, pero
+# el registry usa el primero a proposito. "-in21k" es un encoder puro (ViTModel, sin
+# cabeza de clasificacion), que es la base de fine-tuning mas limpia para 101 clases
+# nuevas: from_pretrained("...-in21k", num_labels=101) inicializa una cabeza nueva
+# desde cero, con el warning esperado de pesos no inicializados, y nada mas.
+# "google/vit-base-patch16-224" (sin -in21k) SI trae una cabeza de 1000 clases
+# (ImageNet-1k) entrenada; usarlo para 101 clases requiere from_pretrained(...,
+# ignore_mismatched_sizes=True) para descartar esa cabeza en vez de reusarla, porque
+# el shape 1000 no coincide con 101. Confundir los dos checkpoints en el codigo de
+# entrenamiento (Fine-tuning de ViT, todavia sin hacer) es la forma de que esa llamada
+# falle por shape mismatch o, peor, cargue pesos de clasificacion que no aplican.
 MODELS = {
     "vit": "google/vit-base-patch16-224-in21k",
     "mobilevit": "apple/mobilevit-small",
