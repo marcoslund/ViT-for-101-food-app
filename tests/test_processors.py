@@ -9,7 +9,7 @@ pytest.importorskip("transformers")
 
 from dataclasses import FrozenInstanceError
 
-from vit_for_101_food_app.config import MODELS
+from vit_for_101_food_app.config import CACHE_SHORT_SIDE, MODELS
 from vit_for_101_food_app.preprocessing import processors
 
 
@@ -89,6 +89,21 @@ def test_all_specs_cubre_el_registry():
     assert set(processors.all_specs()) == set(MODELS)
 
 
+def test_cache_short_side_cubre_la_mayor_resolucion_de_entrada_del_registry():
+    """defecto 2 del task brief: CACHE_SHORT_SIDE=288 era un comentario en config.py,
+    no un hecho derivado del registry -- un tercer modelo a 384px pasaria a entrenar
+    sobre imagenes de cache upsampleadas sin que nada fallara. Este test ata la
+    constante a MODELS de verdad: si alguien sube la resolucion de un modelo (o suma
+    uno nuevo) sin subir CACHE_SHORT_SIDE a la par, esto falla. Vive aca (no en
+    test_config.py) porque necesita el extra 'deep' para leer los AutoImageProcessor
+    reales via all_specs().
+    """
+    mayor_resolucion_pedida = max(
+        (spec.resize_shortest or spec.target_size) for spec in processors.all_specs().values()
+    )
+    assert CACHE_SHORT_SIDE >= mayor_resolucion_pedida
+
+
 def test_clave_desconocida_es_un_error_explicito():
     with pytest.raises(KeyError, match="mobilenet"):
         processors.spec_for("mobilenet")
@@ -134,6 +149,13 @@ def test_resample_cero_no_se_descarta_por_or(monkeypatch):
         processors, "MODELS", {**original_models, "test_resample_zero": "fake/model"}
     )
 
-    spec = processors.spec_for("test_resample_zero")
-    assert spec.resample == 0, "resample=0 debe preservarse, no reemplazarse por 2"
-    assert spec.rescale_factor == 0.0, "rescale_factor=0.0 debe preservarse"
+    try:
+        spec = processors.spec_for("test_resample_zero")
+        assert spec.resample == 0, "resample=0 debe preservarse, no reemplazarse por 2"
+        assert spec.rescale_factor == 0.0, "rescale_factor=0.0 debe preservarse"
+    finally:
+        # spec_for esta decorado con functools.cache, a nivel de modulo: monkeypatch
+        # deshace load_processor y MODELS al terminar el test, pero NO limpia esta
+        # cache. Sin este cache_clear(), la entrada stub "test_resample_zero" sigue
+        # viva para el resto de la sesion de pytest.
+        processors.spec_for.cache_clear()

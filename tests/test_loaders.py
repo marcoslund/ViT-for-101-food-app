@@ -164,9 +164,126 @@ def test_val_y_test_no_usan_augmentation(tmp_path, food101_falso):
     torch.testing.assert_close(a, b)
 
 
+def test_build_dataloaders_respeta_exclusiones_en_los_tres_splits(tmp_path, food101_falso):
+    """defecto 1 del task brief: splits.load_split honraba exclusions solo para test y
+    lo descartaba para train/val, asi que build_dataloaders dejaba una imagen excluida
+    presente en dos tercios del benchmark. Si esa regresion volviera, las exclusiones
+    de train o val (o ambas) reaparecerian en el DataFrame subyacente y esto fallaria."""
+    csv = tmp_path / "s.csv"
+    indice = raw.load_index("train", meta_dir=food101_falso["meta"], exclusions=set())
+    split = splits.build_split(indice, val_fraction=0.10, seed=42)
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+
+    excluida_train = split.loc[split["split"] == "train", "rel"].iloc[0]
+    excluida_val = split.loc[split["split"] == "val", "rel"].iloc[0]
+    excluida_test = food101_falso["test_rels"][0]
+    exclusiones = {excluida_train, excluida_val, excluida_test}
+
+    dls = loaders.build_dataloaders(
+        "vit",
+        source="raw",
+        batch_size=4,
+        num_workers=0,
+        images_root=food101_falso["images"],
+        csv_path=csv,
+        label_map_path=tmp_path / "l.json",
+        meta_dir=food101_falso["meta"],
+        exclusions=exclusiones,
+    )
+
+    rels_por_split = {nombre: set(dl.dataset._rels) for nombre, dl in dls.items()}
+    assert excluida_train not in rels_por_split["train"]
+    assert excluida_val not in rels_por_split["val"]
+    assert excluida_test not in rels_por_split["test"]
+
+
+def _build_train_loader(tmp_path, food101_falso, seed=None):
+    csv = tmp_path / "s.csv"
+    if not csv.is_file():
+        indice = raw.load_index("train", meta_dir=food101_falso["meta"], exclusions=set())
+        split = splits.build_split(indice, val_fraction=0.10, seed=42)
+        splits.write_artifacts(
+            split,
+            food101_falso["clases"],
+            csv_path=csv,
+            manifest_path=tmp_path / "m.json",
+            label_map_path=tmp_path / "l.json",
+        )
+    kwargs = {
+        "train_policy": "standard",
+        "source": "raw",
+        "batch_size": 8,
+        "num_workers": 0,
+        "images_root": food101_falso["images"],
+        "csv_path": csv,
+        "label_map_path": tmp_path / "l.json",
+        "meta_dir": food101_falso["meta"],
+        "exclusions": set(),
+        "splits_to_load": ("train",),
+    }
+    if seed is not None:
+        kwargs["seed"] = seed
+    return loaders.build_dataloaders("vit", **kwargs)["train"]
+
+
+def test_misma_semilla_da_el_mismo_primer_batch_de_train(tmp_path, food101_falso):
+    """defecto 4 del task brief: sin generator ni manual_seed, dos construcciones del
+    dataloader de train (shuffle=True, policy='standard' con RandomResizedCrop +
+    HorizontalFlip estocasticos) dan un orden Y un contenido de batch distintos cada
+    vez. El pool de train del arbol falso tiene 54 imagenes (3 clases x 18, tras el
+    10% de val) y batch_size=8: bastante grande para que un shuffle no sembrado
+    coincida por azar. Si build_dataloaders dejara de sembrar el generator o el RNG
+    global de torch, este test fallaria -- lo verificamos abajo reproduciendo la
+    regresion a mano."""
+    dl_a = _build_train_loader(tmp_path, food101_falso, seed=123)
+    dl_b = _build_train_loader(tmp_path, food101_falso, seed=123)
+
+    batch_a = next(iter(dl_a))
+    batch_b = next(iter(dl_b))
+
+    torch.testing.assert_close(batch_a["pixel_values"], batch_b["pixel_values"])
+    torch.testing.assert_close(batch_a["labels"], batch_b["labels"])
+
+
+def test_semillas_distintas_dan_batches_distintos(tmp_path, food101_falso):
+    """Confirma que el seed realmente controla el resultado, no que build_dataloaders
+    ignora el argumento y siempre da lo mismo (lo que haria pasar el test anterior
+    por una razon incorrecta)."""
+    dl_a = _build_train_loader(tmp_path, food101_falso, seed=123)
+    dl_b = _build_train_loader(tmp_path, food101_falso, seed=999)
+
+    batch_a = next(iter(dl_a))
+    batch_b = next(iter(dl_b))
+
+    distinto = not torch.allclose(
+        batch_a["pixel_values"], batch_b["pixel_values"]
+    ) or not torch.equal(batch_a["labels"], batch_b["labels"])
+    assert distinto, "semillas distintas no pueden dar exactamente el mismo batch"
+
+
 def test_modelo_desconocido_es_un_error_explicito(tmp_path, food101_falso):
     with pytest.raises(KeyError):
         loaders.build_dataloaders("resnet", source="raw", images_root=food101_falso["images"])
+
+
+def test_source_cache_con_cache_invalido_o_ausente_es_un_error_guiado(tmp_path, food101_falso):
+    """defecto 2 del task brief: cache_is_valid existia pero build_dataloaders(source=
+    'cache') nunca la llamaba, asi que un cache generado con un CACHE_SHORT_SIDE viejo
+    (o directamente ausente) se leia en silencio. Si esta llamada se sacara, esto
+    fallaria porque no habria excepcion."""
+    with pytest.raises(RuntimeError, match="dataset cache"):
+        loaders.build_dataloaders(
+            "vit",
+            source="cache",
+            images_root=tmp_path / "cache-inexistente",
+            label_map_path=tmp_path / "l.json",
+        )
 
 
 def test_source_invalido_es_un_error_explicito(tmp_path, food101_falso):

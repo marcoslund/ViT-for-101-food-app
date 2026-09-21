@@ -50,7 +50,6 @@ def test_el_cache_es_regenerable_y_va_a_interim():
 
 
 def test_parametros_del_cache_y_del_split():
-    assert config.CACHE_SHORT_SIDE == 288
     assert 1 <= config.CACHE_JPEG_QUALITY <= 100
     assert 0 < config.VAL_FRACTION < 1
     assert config.SEED == 42
