@@ -57,7 +57,7 @@ sin modificar: cualquier split propio haría los resultados incomparables con la
 ## Estado del proyecto
 
 - [x] **EDA** — [`notebooks/1.0-eda-food101.ipynb`](notebooks/1.0-eda-food101.ipynb)
-- [ ] Preprocesamiento del dataset
+- [x] **Preprocesamiento** — [`notebooks/2.0-preprocessing.ipynb`](notebooks/2.0-preprocessing.ipynb)
 - [ ] Fine-tuning de MobileViT (en dispositivo)
 - [ ] Fine-tuning y evaluación del ViT baseline (servido por API)
 - [ ] Tabla comparativa y contraste de la hipótesis
@@ -133,6 +133,61 @@ Configuración, una sola vez:
 La celda toca únicamente `data/processed/`, así que no compite con el guardado del notebook, y es
 idempotente: si no cambió nada, no crea un commit vacío.
 
+## Preprocesamiento
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marcoslund/ViT-for-101-food-app/blob/main/notebooks/2.0-preprocessing.ipynb)
+
+[`notebooks/2.0-preprocessing.ipynb`](notebooks/2.0-preprocessing.ipynb) ejecuta las decisiones de
+la tabla hallazgo → decisión del EDA con el paquete `vit_for_101_food_app.preprocessing`: split de
+validación, cache de imágenes y los transforms que replican el `AutoImageProcessor` nativo de cada
+modelo. Se verificó localmente contra un subset real de 3 clases de Food-101; el dataset completo
+(~4.7 GB) está pensado para correr en Colab.
+
+### Regla central: nunca escribir la geometría a mano
+
+Cada modelo consume su propio `AutoImageProcessor` de HuggingFace, leído en runtime por
+`preprocessing.processors.spec_for`. `preprocessing.policies.build_transform` reconstruye esa misma
+geometría operando sobre tensores — necesario para poder aplicar augmentation con
+`torchvision.transforms.v2` — y `make verify` comprueba que ambos coinciden. En la corrida de
+verificación local la diferencia máxima medida fue `1.19e-07` para ViT y `0.0` para MobileViT
+(orden del épsilon de `float32`, no una aproximación visual).
+
+Esa equivalencia es lo que permite dejar a la vista una diferencia real entre modelos sin
+"corregirla": MobileViT recibe sus canales en **BGR** y **no normaliza**, mientras que ViT recibe
+**RGB** normalizado a `[-1, 1]`. Igualar esas dos filas "para que quede prolijo" es exactamente el
+bug que documenta la sección 6 del notebook — el modelo entrenaría peor sin que nada falle.
+
+### Artefactos versionados
+
+Además de los tres artefactos del EDA, `data/processed/` versiona el split de validación y el mapa
+de etiquetas — el mismo tipo de contrato: todos los modelos tienen que entrenar y validar sobre los
+mismos índices.
+
+| Archivo | Contenido |
+|---|---|
+| `train_val_split.csv` | Split de validación recortado de train (estratificado por clase, semilla fija) |
+| `train_val_split_manifest.json` | Semilla, `val_fraction`, conteos por clase y `sha256` del CSV |
+| `label_map.json` | `id2label` / `label2id`, fijados por el orden de `meta/classes.txt` |
+
+El split de **test nunca se toca**: `preprocessing.splits.load_split("test")` lee directo de
+`meta/test.txt`, no pasa por el CSV.
+
+### `make preprocess`
+
+```bash
+make preprocess   # = make data split cache verify
+```
+
+| Target | Comando | Qué hace |
+|---|---|---|
+| `make data` | `dataset.py download` | Descarga y extrae Food-101 (~4.7 GB, idempotente) |
+| `make split` | `dataset.py split` | Escribe `train_val_split.csv`, su manifiesto y `label_map.json` |
+| `make cache` | `dataset.py cache` | Reescala todo el dataset al lado corto configurado (`CACHE_SHORT_SIDE = 288`) en `data/interim/`, regenerable y no versionado |
+| `make verify` | `features.py verify` | Compara los transforms `eval` contra el `AutoImageProcessor` real de cada modelo |
+
+`features.py preview` (fuera de `make preprocess`) escribe una grilla antes/después por modelo en
+`reports/figures/`, para inspección visual.
+
 ## Setup local
 
 El proyecto usa [uv](https://docs.astral.sh/uv/). Python ≥ 3.11.
@@ -143,8 +198,9 @@ source .venv/bin/activate
 make requirements           # uv sync
 ```
 
-`torch` y `transformers` pesan ~2.5 GB y solo hacen falta para la §6 del EDA y para el
-entrenamiento. Van en un extra aparte:
+`torch` y `transformers` pesan ~2.5 GB y solo hacen falta para la §6 del EDA, para el
+preprocesamiento (`make verify`, y las secciones 3 en adelante del notebook de preprocesamiento) y
+para el entrenamiento. Van en un extra aparte:
 
 ```bash
 uv sync --extra deep
@@ -154,6 +210,7 @@ Después:
 
 ```bash
 jupyter lab notebooks/1.0-eda-food101.ipynb
+jupyter lab notebooks/2.0-preprocessing.ipynb
 ```
 
 El dataset se descarga a `data/raw/` (ignorado por git). En Colab no hace falta instalar nada: el
@@ -171,8 +228,8 @@ Generada con [cookiecutter-data-science](https://cookiecutter-data-science.drive
 ├── README.md
 ├── data
 │   ├── external       <- Datos de terceros
-│   ├── interim        <- Datos intermedios transformados
-│   ├── processed      <- Artefactos del EDA (versionados: ver arriba)
+│   ├── interim        <- Cache de imágenes reescaladas (regenerable, no versionado)
+│   ├── processed      <- Artefactos versionados del EDA y del preprocesamiento (ver arriba)
 │   └── raw            <- Food-101 sin tocar (~5 GB, ignorado por git)
 │
 ├── docs               <- Documentación del proyecto
@@ -180,7 +237,7 @@ Generada con [cookiecutter-data-science](https://cookiecutter-data-science.drive
 ├── models             <- Modelos entrenados y serializados, predicciones, métricas
 │
 ├── notebooks          <- Notebooks. Convención: número de orden + descripción,
-│                         p. ej. `1.0-eda-food101.ipynb`
+│                         p. ej. `1.0-eda-food101.ipynb`, `2.0-preprocessing.ipynb`
 │
 ├── pyproject.toml     <- Metadatos, dependencias y config de ruff
 │
@@ -189,16 +246,23 @@ Generada con [cookiecutter-data-science](https://cookiecutter-data-science.drive
 ├── reports            <- Análisis generado (HTML, PDF, LaTeX)
 │   └── figures        <- Gráficos para los informes
 │
-├── tests              <- Tests de integridad de los artefactos del EDA
+├── tests              <- Tests de integridad de los artefactos del EDA y del preprocesamiento
 │
 └── vit_for_101_food_app   <- Código fuente del proyecto
     ├── config.py               <- Rutas, semilla y resoluciones de los modelos
-    ├── dataset.py              <- Descarga y preparación del dataset
-    ├── features.py             <- Preprocesamiento de imágenes
+    ├── dataset.py              <- CLI: descarga, split de validación y cache
+    ├── features.py             <- CLI: verificación e inspección visual de los transforms
     ├── modeling
     │   ├── predict.py          <- Inferencia (local y por API)
     │   └── train.py            <- Fine-tuning de los modelos
-    └── plots.py                <- Visualizaciones
+    ├── plots.py                <- Visualizaciones
+    └── preprocessing
+        ├── raw.py              <- Índice canónico de Food-101 y descarga
+        ├── splits.py           <- Split de validación y mapa de etiquetas
+        ├── cache.py            <- Cache de imágenes reescaladas
+        ├── processors.py       <- AutoImageProcessor -> ProcessorSpec, por modelo
+        ├── policies.py         <- Transforms de augmentation y evaluación
+        └── loaders.py          <- Dataset y DataLoaders
 ```
 
 ## Citación
