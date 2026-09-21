@@ -45,15 +45,12 @@ def build_split(
     )
     out = ordenado.assign(split="train")
     out.loc[val_idx, "split"] = "val"
-    result = out[COLUMNAS].astype(
-        {
-            "rel": pd.StringDtype(storage="python", na_value=float("nan")),
-            "class_dir": pd.StringDtype(storage="python", na_value=float("nan")),
-            "label": pd.StringDtype(storage="python", na_value=float("nan")),
-            "split": pd.StringDtype(storage="python", na_value=float("nan")),
-        }
-    )
-    return result
+    # No se fuerza ningun dtype. El contrato de este modulo son los VALORES del CSV y
+    # su sha256, no el dtype en memoria: write_artifacts serializa a texto y load_split
+    # vuelve a leer con read_csv, asi que rio abajo mandan los dtypes que infiera pandas.
+    # Forzar StringDtype aca ataba la libreria a la version de pandas -- el argumento
+    # na_value no existe antes de 2.3 y rompia en Colab con TypeError.
+    return out[COLUMNAS]
 
 
 def build_label_map(class_order: list[str]) -> dict:

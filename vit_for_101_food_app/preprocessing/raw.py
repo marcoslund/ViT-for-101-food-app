@@ -104,7 +104,18 @@ def ensure_dataset(
 
     logger.info(f"extrayendo en {raw_dir}")
     with tarfile.open(tar_path) as tar:
-        tar.extractall(raw_dir, filter="data")
+        # filter="data" rechaza rutas absolutas, symlinks y salidas del directorio
+        # destino. Llego en Python 3.12 y se backporteo a 3.11.4, pero el proyecto
+        # admite >=3.11, y Colab no siempre trae la ultima: sin el fallback, extraer
+        # falla con TypeError en un 3.11 temprano. Se prefiere el filtro cuando existe.
+        try:
+            tar.extractall(raw_dir, filter="data")
+        except TypeError:
+            logger.warning(
+                "este Python no soporta tarfile filter='data'; "
+                "extrayendo sin el (el tarball viene de la fuente oficial)"
+            )
+            tar.extractall(raw_dir)
 
     logger.success(f"Food-101 disponible en {dest}")
     return dest

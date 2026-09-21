@@ -24,7 +24,7 @@ dependencies = [
     "matplotlib",
     "notebook",
     "numpy",
-    "pandas",
+    "pandas>=2.0",  # cota explicita: sin ella Colab resuelve cualquier version
     "pip",
     "pytest",
     "python-dotenv",

@@ -3750,7 +3750,7 @@ requires-dist = [
     { name = "matplotlib" },
     { name = "notebook" },
     { name = "numpy" },
-    { name = "pandas" },
+    { name = "pandas", specifier = ">=2.0" },
     { name = "pillow", specifier = ">=10.0" },
     { name = "pip" },
     { name = "pytest" },

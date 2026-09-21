@@ -94,7 +94,10 @@ def test_el_csv_escrito_se_relee_identico(tmp_path, split, food101_falso):
         manifest_path=tmp_path / "m.json",
         label_map_path=tmp_path / "l.json",
     )
-    pd.testing.assert_frame_equal(pd.read_csv(csv), split)
+    # check_dtype=False a proposito: el contrato son los VALORES y el sha256 del CSV,
+    # no el dtype en memoria. Exigir igualdad de dtype obligaba a build_split a forzar
+    # StringDtype, lo que ataba la libreria a una version de pandas (ver splits.py).
+    pd.testing.assert_frame_equal(pd.read_csv(csv), split, check_dtype=False)
 
 
 def test_label_map_es_una_biyeccion(food101_falso):
