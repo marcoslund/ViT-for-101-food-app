@@ -1,0 +1,63 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "vit_for_101_food_app"
+version = "0.0.1"
+description = "Benchmark de transformers de vision sobre Food-101: ViT servido por API vs MobileViT en dispositivo. Vision por Computadora III - CEIA / MIA (FIUBA)."
+authors = [
+  { name = "Antonella Nerea Gambarte" },
+  { name = "Florencia Priscilla Vela" },
+  { name = "Marcos Lund" },
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License"
+]
+dependencies = [
+    "ipython",
+    "jupyterlab",
+    "loguru",
+    "matplotlib",
+    "notebook",
+    "numpy",
+    "pandas",
+    "pip",
+    "pytest",
+    "python-dotenv",
+    "ruff",
+    "scikit-learn",
+    "tqdm",
+    "typer",
+    # EDA de Food-101
+    "seaborn>=0.13",
+    "scipy>=1.11",
+    "Pillow>=10.0",
+    "ImageHash>=4.3",   # phash: duplicados y fuga train/test
+]
+requires-python = ">=3.11"
+
+# torch + transformers pesan ~2.5 GB y solo hacen falta para la seccion 6 del EDA
+# (embeddings CLIP) y para el entrenamiento. Instalarlos con:  uv sync --extra deep
+[project.optional-dependencies]
+deep = [
+    "torch>=2.1",
+    "transformers>=4.40",
+]
+
+
+[tool.ruff]
+line-length = 99
+src = ["vit_for_101_food_app"]
+include = ["pyproject.toml", "vit_for_101_food_app/**/*.py"]
+
+[tool.ruff.lint]
+extend-select = ["I"]  # Add import sorting
+
+[tool.ruff.lint.isort]
+known-first-party = ["vit_for_101_food_app"]
+force-sort-within-sections = true
+

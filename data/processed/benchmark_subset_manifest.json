@@ -1,0 +1,18 @@
+{
+  "dataset": "Food-101 (Bossard et al., ECCV 2014)",
+  "source_url": "https://data.vision.ee.ethz.ch/cvl/food-101.tar.gz",
+  "split_origen": "test oficial (meta/test.txt)",
+  "seed": 42,
+  "imagenes_por_clase": 25,
+  "n_clases": 101,
+  "n_imagenes": 2525,
+  "bytes_totales": 126560114,
+  "exclusiones": {
+    "corruptas_o_ilegibles": [],
+    "fuga_train_test": []
+  },
+  "muestra_inspeccionada": 6060,
+  "nota": "Las exclusiones se detectaron sobre una muestra estratificada, no sobre el test completo.",
+  "csv_sha256": "c87592c11e1b336803cc40544a183fee936f77c916a225fa75e98b64989f5058",
+  "generado": "2026-09-14 03:38:53"
+}
