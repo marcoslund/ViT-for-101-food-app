@@ -80,23 +80,39 @@ def test_ensure_dataset_es_idempotente_si_ya_esta_extraido(food101_falso):
 
 def test_ensure_dataset_detecta_extraccion_incompleta(tmp_path, monkeypatch):
     """Una extraccion interrumpida (meta completo, images incompleto) no se trata como lista."""
-    # Simula el escenario donde meta/ existe pero images/ esta incompleto.
+    # Simula un tarball interrumpido: meta/ completo pero images/ con menos clases.
     dest = tmp_path / "partial"
     dest.mkdir()
-    (dest / "meta").mkdir()
-    (dest / "images").mkdir()
-    # Crea solo 50 clases en vez de 101, simulando extraccion interrumpida.
-    for i in range(50):
-        (dest / "images" / f"class_{i}").mkdir()
+    meta = dest / "meta"
+    meta.mkdir()
+    images = dest / "images"
+    images.mkdir()
+
+    # Crea classes.txt diciendo que hay 3 clases.
+    (meta / "classes.txt").write_text("apple_pie\nbaby_back_ribs\nwaffles\n")
+
+    # Pero solo crea 2 directorios de clases (simulando extraccion interrumpida).
+    (images / "apple_pie").mkdir()
+    (images / "baby_back_ribs").mkdir()
 
     # Intercepta el intento de extraccion para verificar que se intenta (no retorna early).
     extraction_attempted = False
 
-    def mock_extractall(*args, **kwargs):
-        nonlocal extraction_attempted
-        extraction_attempted = True
+    class MockTar:
+        def extractall(self, *args, **kwargs):
+            nonlocal extraction_attempted
+            extraction_attempted = True
 
-    monkeypatch.setattr("tarfile.TarFile.extractall", mock_extractall)
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def mock_tarfile_open(*args, **kwargs):
+        return MockTar()
+
+    monkeypatch.setattr("tarfile.open", mock_tarfile_open)
 
     # Intercepta wget para evitar descarga real.
     def mock_run(cmd, *args, **kwargs):
@@ -105,7 +121,55 @@ def test_ensure_dataset_detecta_extraccion_incompleta(tmp_path, monkeypatch):
     monkeypatch.setattr("subprocess.run", mock_run)
 
     raw.ensure_dataset(dest=dest, url="http://fake", force=False)
-    assert extraction_attempted, "Deberia intentar extraccion con images incompleto"
+    assert extraction_attempted, "Deberia intentar extraccion con 2 de 3 clases"
+
+
+def test_ensure_dataset_rechaza_images_con_archivos_sueltos(tmp_path, monkeypatch):
+    """N-1 directorios mas un archivo suelto no se trata como N directorios."""
+    # Simula images/ incompleto: solo 2 de 3 clases mas un archivo suelto.
+    dest = tmp_path / "with_stray"
+    dest.mkdir()
+    meta = dest / "meta"
+    meta.mkdir()
+    images = dest / "images"
+    images.mkdir()
+
+    # Crea classes.txt diciendo que hay 3 clases.
+    (meta / "classes.txt").write_text("apple_pie\nbaby_back_ribs\nwaffles\n")
+
+    # Pero solo crea 2 directorios (incompleto).
+    (images / "apple_pie").mkdir()
+    (images / "baby_back_ribs").mkdir()
+
+    # Anade un archivo suelto que NO debe contar como clase.
+    (images / ".DS_Store").write_text("stray")
+
+    # Intercepta para verificar que se intenta extraccion.
+    extraction_attempted = False
+
+    class MockTar:
+        def extractall(self, *args, **kwargs):
+            nonlocal extraction_attempted
+            extraction_attempted = True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def mock_tarfile_open(*args, **kwargs):
+        return MockTar()
+
+    monkeypatch.setattr("tarfile.open", mock_tarfile_open)
+
+    def mock_run(cmd, *args, **kwargs):
+        pass
+
+    monkeypatch.setattr("subprocess.run", mock_run)
+
+    raw.ensure_dataset(dest=dest, url="http://fake", force=False)
+    assert extraction_attempted, "Deberia intentar extraccion: 2 dirs + 1 file != 3 classes"
 
 
 def test_load_index_usa_exclusiones_por_defecto_cuando_no_se_pasan(

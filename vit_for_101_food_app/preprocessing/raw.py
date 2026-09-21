@@ -19,7 +19,6 @@ from vit_for_101_food_app.config import (
     FOOD101_DIR,
     FOOD101_META_DIR,
     FOOD101_URL,
-    RAW_DATA_DIR,
 )
 
 SPLITS = ("train", "test")
@@ -84,22 +83,28 @@ def ensure_dataset(
         # Solo si classes.txt existe, cuento cuantas clases deberia haber.
         # El tarball escribe meta/ antes que images/, asi que una extraccion interrumpida
         # deja meta/ completo pero images/ incompleto: necesitamos verificar ambos.
+        # Contamos solo directorios, no archivos sueltos (.DS_Store u otros).
         expected_classes = len(class_names(classes_file))
-        actual_classes = len(list(images_dir.iterdir())) if images_dir.is_dir() else 0
+        actual_classes = (
+            sum(1 for p in images_dir.iterdir() if p.is_dir()) if images_dir.is_dir() else 0
+        )
         if actual_classes == expected_classes:
             logger.info(f"Food-101 ya esta en {dest}")
             return dest
 
-    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tar_path = RAW_DATA_DIR / "food-101.tar.gz"
+    # Tarball va junto al dest: para default (dest=FOOD101_DIR), tar_path esta bajo
+    # RAW_DATA_DIR. Para tests, tar_path queda bajo tmp_path.
+    raw_dir = dest.parent
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    tar_path = raw_dir / "food-101.tar.gz"
 
     if not tar_path.is_file() or force:
         logger.info(f"descargando {url} (~5 GB, reanudable)")
         subprocess.run(["wget", "-c", "-O", str(tar_path), url], check=True)
 
-    logger.info(f"extrayendo en {RAW_DATA_DIR}")
+    logger.info(f"extrayendo en {raw_dir}")
     with tarfile.open(tar_path) as tar:
-        tar.extractall(RAW_DATA_DIR, filter="data")
+        tar.extractall(raw_dir, filter="data")
 
     logger.success(f"Food-101 disponible en {dest}")
     return dest
