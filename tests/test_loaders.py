@@ -9,6 +9,8 @@ pytest.importorskip("torch")
 pytest.importorskip("torchvision")
 pytest.importorskip("transformers")
 
+import numpy as np
+from PIL import Image
 import torch
 
 from vit_for_101_food_app.config import MODELS
@@ -29,6 +31,45 @@ def frame(food101_falso):
 @pytest.fixture
 def label2id(food101_falso):
     return splits.build_label_map(food101_falso["clases"])["label2id"]
+
+
+def _imagen_estructurada(seed: int, ancho: int = 300, alto: int = 200) -> Image.Image:
+    """Imagen con contenido sensible al recorte y al flip: ruido de fondo mas una
+    banda roja arriba y una banda verde a la izquierda.
+
+    Las imagenes de food101_falso (conftest.py) son de color plano por imagen: eso
+    alcanza para casi toda la suite, pero es invariante a RandomResizedCrop y a
+    RandomHorizontalFlip -- cualquier ventana de recorte, volteada o no, decodifica
+    al mismo tensor. Un test de reproducibilidad de la augmentation construido sobre
+    esas imagenes no puede fallar nunca por un draw de RNG de augmentation distinto,
+    solo por el orden del shuffle (que kwarg generator ya controla por separado). Con
+    ruido y bandas en bordes distintos, un recorte distinto retiene una porcion
+    distinta de cada banda, y un flip horizontal mueve la banda verde al otro lado:
+    ambos son detectables en el tensor resultante.
+    """
+    rng = np.random.default_rng(seed)
+    arr = rng.integers(0, 256, size=(alto, ancho, 3), dtype=np.uint8)
+    banda_h = max(4, alto // 8)
+    banda_w = max(4, ancho // 8)
+    arr[:banda_h, :, :] = (220, 20, 20)  # banda roja arriba
+    arr[:, :banda_w, :] = (20, 200, 20)  # banda verde a la izquierda
+    return Image.fromarray(arr)
+
+
+@pytest.fixture
+def imagenes_estructuradas(tmp_path, food101_falso):
+    """Arbol de imagenes paralelo al de food101_falso (mismos rel, mismas clases) pero
+    con contenido estructurado en vez de color plano -- ver _imagen_estructurada. Solo
+    para los tests de reproducibilidad de augmentation de mas abajo. No toca
+    food101_falso ni conftest.py: el resto de la suite depende de esa fixture tal cual
+    esta, con imagenes de color plano.
+    """
+    root = tmp_path / "images_estructuradas"
+    for i, rel in enumerate(food101_falso["train_rels"]):
+        destino = root / f"{rel}.jpg"
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        _imagen_estructurada(seed=i).save(destino, quality=95)
+    return root
 
 
 def _dataset(frame, food101_falso, label2id, key="vit", policy="eval"):
@@ -203,7 +244,7 @@ def test_build_dataloaders_respeta_exclusiones_en_los_tres_splits(tmp_path, food
     assert excluida_test not in rels_por_split["test"]
 
 
-def _build_train_loader(tmp_path, food101_falso, seed=None):
+def _build_train_loader(tmp_path, food101_falso, seed=None, images_root=None):
     csv = tmp_path / "s.csv"
     if not csv.is_file():
         indice = raw.load_index("train", meta_dir=food101_falso["meta"], exclusions=set())
@@ -220,7 +261,7 @@ def _build_train_loader(tmp_path, food101_falso, seed=None):
         "source": "raw",
         "batch_size": 8,
         "num_workers": 0,
-        "images_root": food101_falso["images"],
+        "images_root": images_root if images_root is not None else food101_falso["images"],
         "csv_path": csv,
         "label_map_path": tmp_path / "l.json",
         "meta_dir": food101_falso["meta"],
@@ -232,19 +273,63 @@ def _build_train_loader(tmp_path, food101_falso, seed=None):
     return loaders.build_dataloaders("vit", **kwargs)["train"]
 
 
-def test_misma_semilla_da_el_mismo_primer_batch_de_train(tmp_path, food101_falso):
-    """defecto 4 del task brief: sin generator ni manual_seed, dos construcciones del
-    dataloader de train (shuffle=True, policy='standard' con RandomResizedCrop +
-    HorizontalFlip estocasticos) dan un orden Y un contenido de batch distintos cada
-    vez. El pool de train del arbol falso tiene 54 imagenes (3 clases x 18, tras el
-    10% de val) y batch_size=8: bastante grande para que un shuffle no sembrado
-    coincida por azar. Si build_dataloaders dejara de sembrar el generator o el RNG
-    global de torch, este test fallaria -- lo verificamos abajo reproduciendo la
-    regresion a mano."""
+def test_misma_semilla_da_el_mismo_orden_de_train(tmp_path, food101_falso):
+    """Mitad 1 de defecto 4 del task brief -- el shuffle. Sin generator, dos
+    construcciones del dataloader de train dan un orden distinto cada vez. El pool de
+    train del arbol falso tiene 54 imagenes (3 clases x 18, tras el 10% de val) y
+    batch_size=8: bastante grande para que un shuffle no sembrado coincida por azar.
+    Usa las imagenes de color plano de food101_falso (mas rapido, y el orden del
+    shuffle no depende del contenido de la imagen)."""
     dl_a = _build_train_loader(tmp_path, food101_falso, seed=123)
     dl_b = _build_train_loader(tmp_path, food101_falso, seed=123)
 
     batch_a = next(iter(dl_a))
+    batch_b = next(iter(dl_b))
+
+    torch.testing.assert_close(batch_a["pixel_values"], batch_b["pixel_values"])
+    torch.testing.assert_close(batch_a["labels"], batch_b["labels"])
+
+
+def test_misma_semilla_da_el_mismo_contenido_de_augmentation(
+    tmp_path, food101_falso, imagenes_estructuradas
+):
+    """Mitad 2 de defecto 4 del task brief -- la augmentation estocastica en si
+    (RandomResizedCrop + RandomHorizontalFlip), no solo el orden del shuffle.
+
+    Con las imagenes de color plano de food101_falso, esta aserccion pasaria aunque
+    build_dataloaders dejara de llamar a torch.manual_seed(seed): el generator ya fija
+    que imagenes entran al batch y en que orden, y una imagen de color plano da el
+    mismo tensor sin importar que ventana de RandomResizedCrop se dibuje ni si hay
+    flip -- la augmentation es invariante a su propio contenido. Por eso este test usa
+    imagenes_estructuradas (ruido + bandas de color en bordes distintos, ver
+    _imagen_estructurada): un recorte distinto retiene una porcion distinta de cada
+    banda, y el flip horizontal mueve la banda verde de lado, asi que el tensor SI
+    cambia con el draw de augmentation aunque el generator (y por lo tanto que
+    imagenes entran al batch) sea identico.
+
+    Verificado en el reporte final: parchear torch.manual_seed a un no-op dejando
+    generator= intacto hace fallar este test; sacar solo generator= (dejando
+    manual_seed) tambien lo hace fallar. Los dos knobs se prueban por separado."""
+    # torch.manual_seed(seed) corre DENTRO de build_dataloaders, al construir --
+    # no al iterar. Si se construyeran los dos loaders antes de iterar ninguno (como
+    # hace el test de arriba, donde no importa: el shuffle depende solo del generator
+    # de cada uno, no del RNG global), la segunda construccion pisaria el RNG global
+    # que la primera dejo, y para cuando se itera el primer loader el RNG global ya
+    # no esta en el estado sembrado por SU PROPIA llamada a manual_seed -- quedaria
+    # comparando dos corridas con puntos de partida de augmentation distintos, lo que
+    # de nuevo dejaria pasar el test por la razon incorrecta (esta vez por construir
+    # mal el test, no por el bug original). Por eso cada loader se construye e itera
+    # antes de tocar el otro: asi cada uno arranca su augmentation exactamente donde
+    # lo dejo su propia llamada a torch.manual_seed(seed), que es como se usa en la
+    # practica (una corrida entera de un modelo, despues la del otro).
+    dl_a = _build_train_loader(
+        tmp_path, food101_falso, seed=123, images_root=imagenes_estructuradas
+    )
+    batch_a = next(iter(dl_a))
+
+    dl_b = _build_train_loader(
+        tmp_path, food101_falso, seed=123, images_root=imagenes_estructuradas
+    )
     batch_b = next(iter(dl_b))
 
     torch.testing.assert_close(batch_a["pixel_values"], batch_b["pixel_values"])
