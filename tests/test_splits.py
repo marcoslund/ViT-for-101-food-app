@@ -1,0 +1,159 @@
+"""El split de validacion es un contrato: los modelos del benchmark tienen que validar
+sobre exactamente las mismas imagenes. Estos tests lo fijan, igual que test_data.py
+fija el contrato del subset del EDA."""
+
+import hashlib
+import json
+
+import pandas as pd
+import pytest
+
+from vit_for_101_food_app.preprocessing import raw, splits
+
+
+@pytest.fixture
+def indice(food101_falso):
+    return raw.load_index("train", meta_dir=food101_falso["meta"], exclusions=set())
+
+
+@pytest.fixture
+def split(indice):
+    return splits.build_split(indice, val_fraction=0.10, seed=42)
+
+
+def test_split_conserva_todas_las_imagenes(indice, split):
+    assert len(split) == len(indice)
+    assert set(split["rel"]) == set(indice["rel"])
+
+
+def test_split_solo_tiene_train_y_val(split):
+    assert set(split["split"]) == {"train", "val"}
+
+
+def test_train_y_val_son_disjuntos(split):
+    train = set(split.loc[split["split"] == "train", "rel"])
+    val = set(split.loc[split["split"] == "val", "rel"])
+    assert train.isdisjoint(val)
+
+
+def test_val_esta_estratificado_por_clase(split):
+    """El balance perfecto de Food-101 se preserva en las dos partes."""
+    por_clase = split[split["split"] == "val"]["class_dir"].value_counts()
+    assert por_clase.nunique() == 1
+    assert por_clase.iloc[0] == 2  # 10% de 20 imagenes por clase en el arbol falso
+
+
+def test_todas_las_clases_aparecen_en_ambas_partes(split):
+    for parte in ("train", "val"):
+        assert split[split["split"] == parte]["class_dir"].nunique() == 3
+
+
+def test_el_split_es_reproducible_con_la_misma_semilla(indice):
+    a = splits.build_split(indice, val_fraction=0.10, seed=42)
+    b = splits.build_split(indice, val_fraction=0.10, seed=42)
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_semillas_distintas_dan_splits_distintos(indice):
+    a = splits.build_split(indice, val_fraction=0.10, seed=42)
+    b = splits.build_split(indice, val_fraction=0.10, seed=7)
+    assert not a["split"].equals(b["split"])
+
+
+def test_columnas_del_contrato(split):
+    assert list(split.columns) == ["rel", "class_dir", "label", "split"]
+
+
+def test_artefactos_escritos_y_manifiesto_coherente(tmp_path, split, food101_falso):
+    csv = tmp_path / "train_val_split.csv"
+    manifest = tmp_path / "train_val_split_manifest.json"
+    label_map = tmp_path / "label_map.json"
+
+    info = splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=manifest,
+        label_map_path=label_map,
+    )
+
+    assert csv.is_file() and manifest.is_file() and label_map.is_file()
+    datos = json.loads(manifest.read_text())
+    assert datos["seed"] == 42
+    assert datos["n_train"] + datos["n_val"] == len(split)
+    assert datos["csv_sha256"] == hashlib.sha256(csv.read_bytes()).hexdigest()
+    assert datos["csv_sha256"] == info["csv_sha256"]
+
+
+def test_el_csv_escrito_se_relee_identico(tmp_path, split, food101_falso):
+    csv = tmp_path / "s.csv"
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+    pd.testing.assert_frame_equal(pd.read_csv(csv), split)
+
+
+def test_label_map_es_una_biyeccion(food101_falso):
+    mapa = splits.build_label_map(food101_falso["clases"])
+    id2label, label2id = mapa["id2label"], mapa["label2id"]
+    assert len(id2label) == len(label2id) == len(food101_falso["clases"])
+    for idx, clase in id2label.items():
+        assert label2id[clase] == idx
+
+
+def test_label_map_respeta_el_orden_de_classes_txt(food101_falso):
+    mapa = splits.build_label_map(food101_falso["clases"])
+    assert [mapa["id2label"][i] for i in range(len(food101_falso["clases"]))] == food101_falso[
+        "clases"
+    ]
+
+
+def test_load_split_devuelve_cada_parte(tmp_path, split, food101_falso):
+    csv = tmp_path / "s.csv"
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+    train = splits.load_split("train", csv_path=csv)
+    val = splits.load_split("val", csv_path=csv)
+    assert len(train) + len(val) == len(split)
+    assert set(train["split"]) == {"train"}
+
+
+def test_load_split_de_test_va_al_split_oficial(tmp_path, split, food101_falso):
+    """El test oficial no pasa por el CSV: se lee de meta/test.txt, intacto."""
+    csv = tmp_path / "s.csv"
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+    test = splits.load_split(
+        "test", csv_path=csv, meta_dir=food101_falso["meta"], exclusions=set()
+    )
+    assert set(test["rel"]) == set(food101_falso["test_rels"])
+    assert set(test["split"]) == {"test"}
+
+
+def test_ninguna_imagen_de_test_aparece_en_train_ni_val(tmp_path, split, food101_falso):
+    csv = tmp_path / "s.csv"
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+    test = splits.load_split(
+        "test", csv_path=csv, meta_dir=food101_falso["meta"], exclusions=set()
+    )
+    assert set(test["rel"]).isdisjoint(set(split["rel"]))
