@@ -250,23 +250,26 @@ def test_num_workers_none_usa_el_default_de_cuatro(tmp_path, food101_falso, monk
 
 def test_dataloader_con_dos_workers_itera_un_batch(frame, food101_falso, label2id):
     """Con num_workers>0 el Dataset (transform incluido) se manda a procesos hijos por
-    pickle. build_transform (Task 5) compone v2.Lambda con closures para RGB, rescale
-    y flip de canales -- eso no es picklable bajo el start method 'spawn'. Este test
-    corre el DataLoader de verdad, en vez de asumir que num_workers>0 funciona, y pina
-    el comportamiento segun el start method vigente en vez de asumir uno fijo: bajo
-    'spawn' (default de macOS y, desde Python 3.14, tambien de Linux) falla con
-    AttributeError al picklear el lambda; bajo 'fork' (default historico de Linux)
-    hereda memoria en vez de picklear, y el batch se arma normalmente. Si alguien
-    reescribe build_transform sin closures, la rama 'spawn' de este test empieza a
-    fallar (porque deja de levantar la excepcion esperada) y avisa que hay que
-    actualizarlo."""
+    pickle. Task 5 (commit ceb6d6b, "Fix ronda 3") reemplazo los v2.Lambda con closures
+    de build_transform por callables a nivel de modulo especificamente para que esto
+    funcione bajo el start method 'spawn' (default en macOS, y no solo bajo 'fork', que
+    lo esconde porque el worker hereda memoria en vez de picklear). Este test corre el
+    DataLoader de verdad, con num_workers=2, y exige un batch real -- forma y dtype
+    correctos en ambas claves -- en vez de solo comprobar que la iteracion no vuela: un
+    DataLoader que devolviera basura tampoco lanzaria una excepcion."""
     ds = _dataset(frame, food101_falso, label2id)
     dl = torch.utils.data.DataLoader(ds, batch_size=4, num_workers=2, collate_fn=loaders.collate)
     metodo_arranque = mp.get_start_method(allow_none=False)
 
-    if metodo_arranque == "spawn":
-        with pytest.raises(AttributeError, match="pickle"):
-            next(iter(dl))
-    else:
+    try:
         batch = next(iter(dl))
-        assert batch["pixel_values"].shape == (4, *processors.spec_for("vit").input_shape)
+    except Exception as exc:  # noqa: BLE001 -- se re-lanza como fallo de assert con contexto
+        pytest.fail(
+            f"DataLoader con num_workers=2 fallo bajo start method {metodo_arranque!r}: "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+    assert batch["pixel_values"].shape == (4, *processors.spec_for("vit").input_shape)
+    assert batch["pixel_values"].dtype == torch.float32
+    assert batch["labels"].shape == (4,)
+    assert batch["labels"].dtype == torch.long
