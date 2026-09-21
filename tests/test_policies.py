@@ -28,14 +28,23 @@ def imagen():
     return Image.fromarray(arr)
 
 
-@pytest.fixture
-def imagen_gris():
-    """Escala de grises (modo L): Food-101 trae algunas imagenes asi. Sin conversion a
-    RGB, esto produce un tensor de 1 canal en vez de 3 -- silenciosamente para mobilevit,
-    que no tiene ninguna otra parte del pipeline que dependa de la cantidad de canales."""
+def _imagen_en_modo(modo: str) -> Image.Image:
+    """Construye una imagen PIL en uno de los tres modos no-RGB que el hallazgo #7 del
+    EDA encontro en Food-101: escala de grises (L), paleta (P) y CMYK. Sin conversion a
+    RGB, cualquiera de los tres produce un tensor con la cantidad de canales equivocada
+    -- silenciosamente para mobilevit, que no tiene otra parte del pipeline que dependa
+    de la cantidad de canales para fallar ruidoso."""
     rng = np.random.default_rng(7)
-    arr = rng.integers(0, 256, size=(400, 600), dtype=np.uint8)
-    return Image.fromarray(arr, mode="L")
+    if modo == "L":
+        arr = rng.integers(0, 256, size=(400, 600), dtype=np.uint8)
+        return Image.fromarray(arr, mode="L")
+    if modo == "P":
+        arr = rng.integers(0, 256, size=(400, 600), dtype=np.uint8)
+        return Image.fromarray(arr, mode="L").convert("P")
+    if modo == "CMYK":
+        arr = rng.integers(0, 256, size=(400, 600, 4), dtype=np.uint8)
+        return Image.fromarray(arr, mode="CMYK")
+    raise ValueError(f"modo no soportado en el test: {modo!r}")
 
 
 @pytest.mark.parametrize("key", list(MODELS))
@@ -58,13 +67,17 @@ def test_toda_politica_produce_la_resolucion_nativa(key, policy, imagen):
 
 
 @pytest.mark.parametrize("key", list(MODELS))
-def test_imagen_no_rgb_produce_la_resolucion_nativa(key, imagen_gris):
-    """La conversion a RGB es incondicional (hallazgo #7 del EDA: .convert("RGB")
-    siempre). Sin ella, mobilevit -- que no normaliza -- devolveria un tensor de 1
-    canal sin ningun error, y eso es exactamente la degradacion silenciosa que este
-    modulo existe para evitar."""
+@pytest.mark.parametrize("modo", ["L", "P", "CMYK"])
+def test_imagen_no_rgb_produce_la_resolucion_nativa(key, modo):
+    """La conversion a RGB es incondicional y a nivel PIL (hallazgo #7 del EDA:
+    .convert("RGB") siempre). v2.RGB() por si solo no alcanza -- no sabe llevar CMYK (4
+    canales) a 3 --, por eso la conversion tiene que pasar por PIL. Sin ella, mobilevit
+    -- que no normaliza -- devolveria un tensor con la cantidad de canales equivocada
+    sin ningun error, y eso es exactamente la degradacion silenciosa que este modulo
+    existe para evitar. Cubre los tres modos del hallazgo para los dos modelos: ninguna
+    combinacion queda exceptuada."""
     spec = processors.spec_for(key)
-    t = policies.build_transform(spec, "eval")(imagen_gris)
+    t = policies.build_transform(spec, "eval")(_imagen_en_modo(modo))
     assert t.shape == spec.input_shape
 
 

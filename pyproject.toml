@@ -53,14 +53,19 @@ requires-python = ">=3.11"
 #     un misterio pero es una version vieja de la libreria. Verificado leyendo el
 #     codigo fuente real de las tags v5.3.0 (BaseImageProcessor todavia) y v5.4.0
 #     (TorchvisionBackend) para vit y mobilevit.
-#   - torchvision>=0.18.0: primera version con torchvision.transforms.v2.RGB(), que
-#     build_transform usa para convertir a RGB incondicionalmente antes de la
-#     geometria. Verificado contra la documentacion publicada por version (404 en
-#     0.17, 200 en 0.18).
+#   - torchvision>=0.16.0: primera version con torchvision.transforms.v2.ToImage(), la
+#     conversion PIL->tensor que build_transform usa antes de la geometria. La
+#     conversion a RGB corre en PIL (Image.convert("RGB"), antes de ToImage) y no
+#     depende de v2.RGB(), asi que ese no es un piso aparte. El parametro antialias de
+#     v2.Resize ya acepta bool en 0.16 (su default ahi es "warn", pero build_transform
+#     lo pasa siempre explicito); recien en 0.17 "warn" paso a ser True por default,
+#     motivo de mas para no depender del default. Verificado contra la documentacion
+#     publicada por version (404 en 0.15, 200 en 0.16 para ToImage) y contra el codigo
+#     fuente de la tag v0.16.0 para la firma de Resize.
 [project.optional-dependencies]
 deep = [
     "torch>=2.1",
-    "torchvision>=0.18",
+    "torchvision>=0.16",
     "transformers>=5.4",
 ]
 

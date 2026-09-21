@@ -3760,7 +3760,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.11" },
     { name = "seaborn", specifier = ">=0.13" },
     { name = "torch", marker = "extra == 'deep'", specifier = ">=2.1" },
-    { name = "torchvision", marker = "extra == 'deep'", specifier = ">=0.18" },
+    { name = "torchvision", marker = "extra == 'deep'", specifier = ">=0.16" },
     { name = "tqdm" },
     { name = "transformers", marker = "extra == 'deep'", specifier = ">=5.4" },
     { name = "typer" },

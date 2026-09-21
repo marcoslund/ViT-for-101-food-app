@@ -159,14 +159,17 @@ def build_transform(spec: ProcessorSpec, policy: str = "standard") -> Callable:
     elegida = POLICIES[policy]
     return v2.Compose(
         [
+            # Convertir a RGB con PIL, ANTES de ToImage. Es el mismo hallazgo #7 del EDA
+            # (notebooks/1.0-eda-food101.ipynb, seccion 3): "Image.open(p).convert('RGB')
+            # siempre, incondicionalmente". No alcanza con hacerlo en tensor: v2.RGB()
+            # sabe pasar de 1 canal a 3, pero no de CMYK (4 canales) a RGB -- ahi
+            # mobilevit (que no normaliza) devolveria un tensor de 4 canales sin ningun
+            # error. Image.convert("RGB") de PIL si resuelve L, P y CMYK correctamente,
+            # que es por lo que el EDA lo pide asi y no como operacion sobre tensor. Para
+            # una imagen ya RGB, convert("RGB") no toca los pixeles, asi que esto no
+            # afecta la equivalencia con el processor.
+            v2.Lambda(lambda img: img.convert("RGB")),
             v2.ToImage(),  # PIL -> tensor uint8 antes de la geometria, como HuggingFace
-            # Convertir siempre a RGB, incondicionalmente: la misma regla del hallazgo #7
-            # del EDA (notebooks/1.0-eda-food101.ipynb, seccion 3), que pide
-            # Image.open(p).convert("RGB") siempre porque Food-101 trae imagenes L, P y
-            # CMYK. Sin esto, una de esas imagenes produce un tensor con la cantidad de
-            # canales equivocada en vez de fallar: ninguna de las dos cosas es lo que
-            # ProcessorSpec.input_shape promete (3 canales).
-            v2.RGB(),
             *elegida.geometry(spec, _interp(spec)),
             *_cola_de_tensor(spec),
             *elegida.after_tensor(),
