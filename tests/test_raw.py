@@ -76,3 +76,52 @@ def test_ensure_dataset_es_idempotente_si_ya_esta_extraido(food101_falso):
     """Si el dataset ya esta, no vuelve a descargar 5 GB."""
     destino = raw.ensure_dataset(dest=food101_falso["root"])
     assert destino == food101_falso["root"]
+
+
+def test_ensure_dataset_detecta_extraccion_incompleta(tmp_path, monkeypatch):
+    """Una extraccion interrumpida (meta completo, images incompleto) no se trata como lista."""
+    # Simula el escenario donde meta/ existe pero images/ esta incompleto.
+    dest = tmp_path / "partial"
+    dest.mkdir()
+    (dest / "meta").mkdir()
+    (dest / "images").mkdir()
+    # Crea solo 50 clases en vez de 101, simulando extraccion interrumpida.
+    for i in range(50):
+        (dest / "images" / f"class_{i}").mkdir()
+
+    # Intercepta el intento de extraccion para verificar que se intenta (no retorna early).
+    extraction_attempted = False
+
+    def mock_extractall(*args, **kwargs):
+        nonlocal extraction_attempted
+        extraction_attempted = True
+
+    monkeypatch.setattr("tarfile.TarFile.extractall", mock_extractall)
+
+    # Intercepta wget para evitar descarga real.
+    def mock_run(cmd, *args, **kwargs):
+        pass
+
+    monkeypatch.setattr("subprocess.run", mock_run)
+
+    raw.ensure_dataset(dest=dest, url="http://fake", force=False)
+    assert extraction_attempted, "Deberia intentar extraccion con images incompleto"
+
+
+def test_load_index_usa_exclusiones_por_defecto_cuando_no_se_pasan(
+    food101_falso, manifiesto_con_exclusiones, monkeypatch
+):
+    """Sin argumento exclusions, load_index aplica las del manifiesto por defecto."""
+    # Monkeypatch load_exclusions para devolver las del manifiesto de prueba.
+    monkeypatch.setattr(
+        "vit_for_101_food_app.preprocessing.raw.load_exclusions",
+        lambda manifest_path=None: manifiesto_con_exclusiones["excluidas"],
+    )
+
+    # Llama sin el argumento exclusions para ejercer la rama por defecto.
+    df = raw.load_index("train", meta_dir=food101_falso["meta"])
+
+    # Las exclusiones deben haberse aplicado.
+    excluidas = manifiesto_con_exclusiones["excluidas"]
+    assert excluidas.isdisjoint(set(df["rel"]))
+    assert len(df) == len(food101_falso["train_rels"]) - len(excluidas)

@@ -73,9 +73,22 @@ def ensure_dataset(
     force: bool = False,
 ) -> Path:
     """Descarga y extrae Food-101 si hace falta. Idempotente: ~5 GB no se bajan dos veces."""
-    if dest.is_dir() and (dest / "meta").is_dir() and not force:
-        logger.info(f"Food-101 ya esta en {dest}")
-        return dest
+    # Verifica que el dataset este completamente extraido. El tarball escribe meta/
+    # antes de images/, asi que una extraccion interrumpida (comun en sesiones de Colab
+    # con timeout) deja meta/ completo pero images/ incompleto. Solo meta/ existiendo
+    # no es suficiente; hay que verificar que images/ tiene todas las clases.
+    meta_dir = dest / "meta"
+    images_dir = dest / "images"
+    classes_file = meta_dir / "classes.txt"
+    if dest.is_dir() and meta_dir.is_dir() and classes_file.is_file() and not force:
+        # Solo si classes.txt existe, cuento cuantas clases deberia haber.
+        # El tarball escribe meta/ antes que images/, asi que una extraccion interrumpida
+        # deja meta/ completo pero images/ incompleto: necesitamos verificar ambos.
+        expected_classes = len(class_names(classes_file))
+        actual_classes = len(list(images_dir.iterdir())) if images_dir.is_dir() else 0
+        if actual_classes == expected_classes:
+            logger.info(f"Food-101 ya esta en {dest}")
+            return dest
 
     RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
     tar_path = RAW_DATA_DIR / "food-101.tar.gz"
