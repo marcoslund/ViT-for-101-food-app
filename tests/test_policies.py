@@ -28,6 +28,16 @@ def imagen():
     return Image.fromarray(arr)
 
 
+@pytest.fixture
+def imagen_gris():
+    """Escala de grises (modo L): Food-101 trae algunas imagenes asi. Sin conversion a
+    RGB, esto produce un tensor de 1 canal en vez de 3 -- silenciosamente para mobilevit,
+    que no tiene ninguna otra parte del pipeline que dependa de la cantidad de canales."""
+    rng = np.random.default_rng(7)
+    arr = rng.integers(0, 256, size=(400, 600), dtype=np.uint8)
+    return Image.fromarray(arr, mode="L")
+
+
 @pytest.mark.parametrize("key", list(MODELS))
 def test_politica_eval_es_identica_al_processor(key, imagen):
     """LA garantia del diseno. Si HuggingFace cambia un default, esto falla ruidosamente
@@ -45,6 +55,17 @@ def test_toda_politica_produce_la_resolucion_nativa(key, policy, imagen):
     t = policies.build_transform(spec, policy)(imagen)
     assert t.shape == spec.input_shape
     assert t.dtype == torch.float32
+
+
+@pytest.mark.parametrize("key", list(MODELS))
+def test_imagen_no_rgb_produce_la_resolucion_nativa(key, imagen_gris):
+    """La conversion a RGB es incondicional (hallazgo #7 del EDA: .convert("RGB")
+    siempre). Sin ella, mobilevit -- que no normaliza -- devolveria un tensor de 1
+    canal sin ningun error, y eso es exactamente la degradacion silenciosa que este
+    modulo existe para evitar."""
+    spec = processors.spec_for(key)
+    t = policies.build_transform(spec, "eval")(imagen_gris)
+    assert t.shape == spec.input_shape
 
 
 def test_mobilevit_queda_en_bgr_y_sin_normalizar(imagen):

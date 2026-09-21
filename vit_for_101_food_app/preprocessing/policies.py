@@ -52,13 +52,24 @@ def _interp(spec: ProcessorSpec) -> InterpolationMode:
 
 
 def _geometria_eval(spec: ProcessorSpec, interp: InterpolationMode) -> list:
-    """Replica exacta de lo que hace el processor: resize y, si corresponde, recorte."""
+    """Replica exacta de lo que hace el processor: resize y, si corresponde, recorte.
+
+    antialias=True explicito: es lo que hace tvF.resize(..., antialias=True) dentro del
+    TorchvisionBackend de HuggingFace, y aca es la garantia entera de la equivalencia,
+    no un detalle cosmetico. No depender del default de la libreria.
+    """
     ops = []
     if spec.do_resize:
         if spec.resize_shortest is not None:
-            ops.append(v2.Resize(spec.resize_shortest, interpolation=interp))
+            ops.append(v2.Resize(spec.resize_shortest, interpolation=interp, antialias=True))
         else:
-            ops.append(v2.Resize((spec.size["height"], spec.size["width"]), interpolation=interp))
+            ops.append(
+                v2.Resize(
+                    (spec.size["height"], spec.size["width"]),
+                    interpolation=interp,
+                    antialias=True,
+                )
+            )
     if spec.do_center_crop and spec.crop_size:
         ops.append(v2.CenterCrop((spec.crop_size["height"], spec.crop_size["width"])))
     return ops
@@ -79,8 +90,12 @@ def _geometria_strong(spec: ProcessorSpec, interp: InterpolationMode) -> list:
 
 def _geometria_resize_only(spec: ProcessorSpec, interp: InterpolationMode) -> list:
     """Ablacion de la seccion 8 #5 del EDA: sin recorte, para descartar que las
-    diferencias entre modelos vengan de cuanta imagen descarta el CenterCrop."""
-    return [v2.Resize((spec.target_size, spec.target_size), interpolation=interp)]
+    diferencias entre modelos vengan de cuanta imagen descarta el CenterCrop.
+
+    antialias=True explicito por la misma razon que en _geometria_eval: consistencia
+    entre las tres geometrias, para que ninguna quede leyendo el default de la libreria.
+    """
+    return [v2.Resize((spec.target_size, spec.target_size), interpolation=interp, antialias=True)]
 
 
 POLICIES: dict[str, Policy] = {
@@ -145,6 +160,13 @@ def build_transform(spec: ProcessorSpec, policy: str = "standard") -> Callable:
     return v2.Compose(
         [
             v2.ToImage(),  # PIL -> tensor uint8 antes de la geometria, como HuggingFace
+            # Convertir siempre a RGB, incondicionalmente: la misma regla del hallazgo #7
+            # del EDA (notebooks/1.0-eda-food101.ipynb, seccion 3), que pide
+            # Image.open(p).convert("RGB") siempre porque Food-101 trae imagenes L, P y
+            # CMYK. Sin esto, una de esas imagenes produce un tensor con la cantidad de
+            # canales equivocada en vez de fallar: ninguna de las dos cosas es lo que
+            # ProcessorSpec.input_shape promete (3 canales).
+            v2.RGB(),
             *elegida.geometry(spec, _interp(spec)),
             *_cola_de_tensor(spec),
             *elegida.after_tensor(),

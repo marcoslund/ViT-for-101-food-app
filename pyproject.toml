@@ -42,11 +42,26 @@ requires-python = ">=3.11"
 
 # torch + transformers pesan ~2.5 GB y solo hacen falta para la seccion 6 del EDA
 # (embeddings CLIP) y para el entrenamiento. Instalarlos con:  uv sync --extra deep
+#
+# Los pisos de torchvision y transformers NO son arbitrarios: preprocessing/policies.py
+# reconstruye la geometria del AutoImageProcessor operando sobre tensor (no sobre PIL),
+# y esa equivalencia depende de dos cosas que no existen en versiones mas viejas:
+#   - transformers>=5.4.0: primera version donde ViTImageProcessor y
+#     MobileViTImageProcessor heredan de TorchvisionBackend (resize sobre tensor con
+#     antialias=True). En transformers 4.x, esos mismos checkpoints resuelven al
+#     processor viejo basado en PIL, y el test de equivalencia da un diff que parece
+#     un misterio pero es una version vieja de la libreria. Verificado leyendo el
+#     codigo fuente real de las tags v5.3.0 (BaseImageProcessor todavia) y v5.4.0
+#     (TorchvisionBackend) para vit y mobilevit.
+#   - torchvision>=0.18.0: primera version con torchvision.transforms.v2.RGB(), que
+#     build_transform usa para convertir a RGB incondicionalmente antes de la
+#     geometria. Verificado contra la documentacion publicada por version (404 en
+#     0.17, 200 en 0.18).
 [project.optional-dependencies]
 deep = [
     "torch>=2.1",
-    "torchvision>=0.16",
-    "transformers>=4.40",
+    "torchvision>=0.18",
+    "transformers>=5.4",
 ]
 
 
