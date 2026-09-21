@@ -70,8 +70,10 @@ def preview(
         label2id=label2id,
     )
 
-    fig, axes = plt.subplots(1, n, figsize=(2.2 * n, 2.6))
-    for ax, i in zip(axes, range(n)):
+    # squeeze=False: con n=1, plt.subplots devuelve un Axes suelto (no iterable) en
+    # vez de un array; forzar 2D lo mantiene iterable para cualquier n.
+    fig, axes = plt.subplots(1, n, figsize=(2.2 * n, 2.6), squeeze=False)
+    for ax, i in zip(axes[0], range(n)):
         t = dataset[i]["pixel_values"]
         if spec.do_flip_channel_order:
             t = t.flip(-3)

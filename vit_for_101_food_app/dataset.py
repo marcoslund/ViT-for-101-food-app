@@ -14,7 +14,6 @@ from vit_for_101_food_app.config import (
     CACHE_DIR,
     CACHE_JPEG_QUALITY,
     CACHE_SHORT_SIDE,
-    FOOD101_CLASSES,
     FOOD101_DIR,
     FOOD101_IMAGES_DIR,
     FOOD101_META_DIR,
@@ -40,7 +39,7 @@ def download(dest: Path = FOOD101_DIR, force: bool = False):
 @app.command()
 def split(
     meta_dir: Path = FOOD101_META_DIR,
-    classes_path: Path = FOOD101_CLASSES,
+    classes_path: Path | None = None,
     csv_path: Path = TRAIN_VAL_SPLIT,
     manifest_path: Path = TRAIN_VAL_MANIFEST,
     label_map_path: Path = LABEL_MAP,
@@ -50,7 +49,13 @@ def split(
     """Recorta el split de validacion de train y escribe los artefactos versionados."""
     indice = raw.load_index("train", meta_dir=meta_dir)
     frame = splits.build_split(indice, val_fraction=val_fraction, seed=seed)
-    clases = raw.class_names(classes_path if classes_path.is_file() else meta_dir / "classes.txt")
+    # classes_path=None (default) resuelve SIEMPRE contra meta_dir, no contra el
+    # default global FOOD101_CLASSES: un --meta-dir explicito no puede quedar pisado
+    # por un archivo que resulte existir en la ruta por defecto (ver label_map.json,
+    # que fija los indices de clase para comparar modelos entre si).
+    clases = raw.class_names(
+        classes_path if classes_path is not None else meta_dir / "classes.txt"
+    )
     info = splits.write_artifacts(
         frame,
         clases,
