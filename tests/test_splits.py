@@ -144,6 +144,49 @@ def test_load_split_de_test_va_al_split_oficial(tmp_path, split, food101_falso):
     assert set(test["split"]) == {"test"}
 
 
+def test_load_split_de_train_y_val_respetan_exclusiones(tmp_path, split, food101_falso):
+    """defecto 1 del task brief: load_split reenviaba exclusions a raw.load_index solo
+    para test, y el branch de train/val filtraba unicamente por la columna split,
+    descartando el argumento. Si esto regresionara, las dos primeras aserciones de
+    abajo (que exigen que las excluidas no aparezcan en train NI en val) fallarian --
+    antes de este fix, la fila excluida de train seguia presente en el CSV releido."""
+    csv = tmp_path / "s.csv"
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+    # Elegimos una exclusion de train y otra de val, tomadas del propio split ya escrito.
+    excluida_train = split.loc[split["split"] == "train", "rel"].iloc[0]
+    excluida_val = split.loc[split["split"] == "val", "rel"].iloc[0]
+    exclusiones = {excluida_train, excluida_val}
+
+    train = splits.load_split("train", csv_path=csv, exclusions=exclusiones)
+    val = splits.load_split("val", csv_path=csv, exclusions=exclusiones)
+
+    assert excluida_train not in set(train["rel"])
+    assert excluida_val not in set(val["rel"])
+    assert len(train) + len(val) == len(split) - len(exclusiones)
+
+
+def test_load_split_sin_exclusiones_no_descarta_filas(tmp_path, split, food101_falso):
+    """exclusions=set() (el caso que ejercitan casi todos los demas tests) tiene que
+    devolver el split completo, sin filtrar nada."""
+    csv = tmp_path / "s.csv"
+    splits.write_artifacts(
+        split,
+        food101_falso["clases"],
+        csv_path=csv,
+        manifest_path=tmp_path / "m.json",
+        label_map_path=tmp_path / "l.json",
+    )
+    train = splits.load_split("train", csv_path=csv, exclusions=set())
+    val = splits.load_split("val", csv_path=csv, exclusions=set())
+    assert len(train) + len(val) == len(split)
+
+
 def test_ninguna_imagen_de_test_aparece_en_train_ni_val(tmp_path, split, food101_falso):
     csv = tmp_path / "s.csv"
     splits.write_artifacts(
@@ -157,3 +200,36 @@ def test_ninguna_imagen_de_test_aparece_en_train_ni_val(tmp_path, split, food101
         "test", csv_path=csv, meta_dir=food101_falso["meta"], exclusions=set()
     )
     assert set(test["rel"]).isdisjoint(set(split["rel"]))
+
+
+def test_load_label_map_hace_el_roundtrip_con_claves_int(tmp_path, food101_falso):
+    """load_label_map es la unica interfaz sin test del modulo, y la siguiente fase
+    mete id2label directo en from_pretrained: si las claves volviesen como str (el
+    default de json.loads), esa llamada fallaria o se degradaria en silencio. Este
+    test escribe con write_artifacts y relee con load_label_map, así que fallaria si
+    la coercion a int desapareciera o si el roundtrip perdiera alguna clase."""
+    label_map_path = tmp_path / "l.json"
+    splits.write_artifacts(
+        splits.build_split(
+            raw.load_index("train", meta_dir=food101_falso["meta"], exclusions=set()),
+            val_fraction=0.10,
+            seed=42,
+        ),
+        food101_falso["clases"],
+        csv_path=tmp_path / "s.csv",
+        manifest_path=tmp_path / "m.json",
+        label_map_path=label_map_path,
+    )
+
+    id2label, label2id = splits.load_label_map(label_map_path)
+
+    assert set(id2label) == set(range(len(food101_falso["clases"])))
+    for idx, clase in id2label.items():
+        assert isinstance(idx, int)
+        assert label2id[clase] == idx
+    assert [id2label[i] for i in range(len(food101_falso["clases"]))] == food101_falso["clases"]
+
+
+def test_load_label_map_da_un_error_guiado_si_falta_el_archivo(tmp_path):
+    with pytest.raises(FileNotFoundError, match="dataset split"):
+        splits.load_label_map(tmp_path / "no-existe.json")

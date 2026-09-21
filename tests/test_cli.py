@@ -145,6 +145,96 @@ def test_cache_construye_desde_el_split(tmp_path, food101_falso):
     assert (tmp_path / "cache" / "cache_manifest.json").is_file()
 
 
+def test_split_respeta_exclusions_manifest_explicito(tmp_path, food101_falso):
+    """--exclusions-manifest en `split` tiene que poder apuntar a un manifiesto propio
+    en vez de caer al archivo real del repo. Esto ejercita raw.load_index, que ya
+    aplicaba exclusiones correctamente antes de este fix -- la parte nueva es solo que
+    el CLI ahora deja elegir que manifiesto usar en vez del default global."""
+    excluida = food101_falso["train_rels"][0]
+    manifest = tmp_path / "exclusiones.json"
+    manifest.write_text(json.dumps({"exclusiones": {"fuga_train_test": [excluida]}}))
+
+    resultado = runner.invoke(
+        dataset_cli.app,
+        [
+            "split",
+            "--meta-dir",
+            str(food101_falso["meta"]),
+            "--csv-path",
+            str(tmp_path / "s.csv"),
+            "--manifest-path",
+            str(tmp_path / "m.json"),
+            "--label-map-path",
+            str(tmp_path / "l.json"),
+            "--exclusions-manifest",
+            str(manifest),
+        ],
+    )
+    assert resultado.exit_code == 0, resultado.output
+    assert excluida not in (tmp_path / "s.csv").read_text()
+
+    # El manifiesto escrito tiene que documentar las exclusiones que realmente se
+    # aplicaron (las de --exclusions-manifest), no las del BENCHMARK_MANIFEST real del
+    # repo -- de lo contrario, con un --exclusions-manifest distinto del default,
+    # train_val_split_manifest.json mentiria sobre que se excluyo.
+    manifiesto_escrito = json.loads((tmp_path / "m.json").read_text())
+    assert manifiesto_escrito["exclusiones_aplicadas"] == [excluida]
+
+
+def test_cache_respeta_exclusions_manifest_explicito_al_releer_el_csv(tmp_path, food101_falso):
+    """defecto 1 del task brief: splits.load_split ignoraba `exclusions` para train/val
+    al releer un CSV ya escrito -- solo lo honraba raw.load_index, en el momento de
+    generar el CSV. Este test escribe el split SIN exclusiones (el CSV contiene la fila
+    de sobra) y despues invoca `cache` con un manifiesto que la excluye: si `cache`
+    (via splits.load_split) no vuelve a filtrar al releer, la imagen se cachea igual.
+    Al reproducir la regresion a mano (ver reporte final) esto fallo, confirmando que
+    antes del fix el cache la incluia."""
+    runner.invoke(
+        dataset_cli.app,
+        [
+            "split",
+            "--meta-dir",
+            str(food101_falso["meta"]),
+            "--csv-path",
+            str(tmp_path / "s.csv"),
+            "--manifest-path",
+            str(tmp_path / "m.json"),
+            "--label-map-path",
+            str(tmp_path / "l.json"),
+        ],
+    )
+    assert food101_falso["train_rels"][0] in (tmp_path / "s.csv").read_text()
+
+    excluida = food101_falso["train_rels"][0]
+    manifest = tmp_path / "exclusiones.json"
+    manifest.write_text(json.dumps({"exclusiones": {"fuga_train_test": [excluida]}}))
+
+    resultado = runner.invoke(
+        dataset_cli.app,
+        [
+            "cache",
+            "--src-dir",
+            str(food101_falso["images"]),
+            "--cache-dir",
+            str(tmp_path / "cache"),
+            "--csv-path",
+            str(tmp_path / "s.csv"),
+            "--meta-dir",
+            str(food101_falso["meta"]),
+            "--short-side",
+            "64",
+            "--workers",
+            "1",
+            "--exclusions-manifest",
+            str(manifest),
+        ],
+    )
+    assert resultado.exit_code == 0, resultado.output
+    from vit_for_101_food_app.preprocessing import cache as cache_mod
+
+    assert not cache_mod.cached_path(excluida, cache_dir=tmp_path / "cache").is_file()
+
+
 def test_verify_compara_contra_el_processor():
     pytest.importorskip("torch")
     pytest.importorskip("transformers")

@@ -76,13 +76,23 @@ def write_artifacts(
     label_map_path: Path = LABEL_MAP,
     seed: int = SEED,
     val_fraction: float = VAL_FRACTION,
+    exclusions: set[str] | None = None,
 ) -> dict:
-    """Escribe el CSV, su manifiesto con sha256 y el mapa de etiquetas."""
+    """Escribe el CSV, su manifiesto con sha256 y el mapa de etiquetas.
+
+    ``exclusions=None`` (default) documenta en el manifiesto las exclusiones del
+    manifiesto real del repo (``raw.load_exclusions()``), igual que antes. Un llamador
+    que arma ``frame`` con un ``exclusions_manifest`` propio (ver ``dataset.py split
+    --exclusions-manifest``) tiene que pasar ese mismo set aca: si no, el manifiesto
+    quedaria documentando exclusiones distintas de las que realmente se aplicaron al
+    CSV que acompaña.
+    """
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(csv_path, index=False, lineterminator="\n")
 
     digest = hashlib.sha256(csv_path.read_bytes()).hexdigest()
     conteos = frame.groupby(["split", "class_dir"]).size()
+    exclusiones_aplicadas = raw.load_exclusions() if exclusions is None else exclusions
 
     manifiesto = {
         "dataset": "Food-101 (Bossard et al., ECCV 2014)",
@@ -94,7 +104,7 @@ def write_artifacts(
         "n_val": int((frame["split"] == "val").sum()),
         "train_por_clase": int(conteos["train"].iloc[0]),
         "val_por_clase": int(conteos["val"].iloc[0]),
-        "exclusiones_aplicadas": sorted(raw.load_exclusions()),
+        "exclusiones_aplicadas": sorted(exclusiones_aplicadas),
         "csv_sha256": digest,
     }
     manifest_path.write_text(json.dumps(manifiesto, indent=2, ensure_ascii=False) + "\n")
@@ -134,10 +144,17 @@ def load_split(
         )
 
     frame = pd.read_csv(csv_path)
-    return frame[frame["split"] == split].reset_index(drop=True)
+    frame = frame[frame["split"] == split]
+    excluidas = raw.load_exclusions() if exclusions is None else exclusions
+    frame = frame[~frame["rel"].isin(excluidas)]
+    return frame.reset_index(drop=True)
 
 
 def load_label_map(path: Path = LABEL_MAP) -> tuple[dict[int, str], dict[str, int]]:
     """``(id2label, label2id)`` con las claves de ``id2label`` como int."""
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"falta {path}; generalo con: python -m vit_for_101_food_app.dataset split"
+        )
     mapa = json.loads(path.read_text())
     return {int(k): v for k, v in mapa["id2label"].items()}, mapa["label2id"]

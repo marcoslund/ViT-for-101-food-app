@@ -11,6 +11,7 @@ from loguru import logger
 import typer
 
 from vit_for_101_food_app.config import (
+    BENCHMARK_MANIFEST,
     CACHE_DIR,
     CACHE_JPEG_QUALITY,
     CACHE_SHORT_SIDE,
@@ -45,9 +46,11 @@ def split(
     label_map_path: Path = LABEL_MAP,
     val_fraction: float = VAL_FRACTION,
     seed: int = SEED,
+    exclusions_manifest: Path = BENCHMARK_MANIFEST,
 ):
     """Recorta el split de validacion de train y escribe los artefactos versionados."""
-    indice = raw.load_index("train", meta_dir=meta_dir)
+    exclusiones = raw.load_exclusions(exclusions_manifest)
+    indice = raw.load_index("train", meta_dir=meta_dir, exclusions=exclusiones)
     frame = splits.build_split(indice, val_fraction=val_fraction, seed=seed)
     # classes_path=None (default) resuelve SIEMPRE contra meta_dir, no contra el
     # default global FOOD101_CLASSES: un --meta-dir explicito no puede quedar pisado
@@ -64,6 +67,7 @@ def split(
         label_map_path=label_map_path,
         seed=seed,
         val_fraction=val_fraction,
+        exclusions=exclusiones,
     )
     typer.echo(f"sha256: {info['csv_sha256']}")
 
@@ -78,11 +82,15 @@ def cache(
     quality: int = CACHE_JPEG_QUALITY,
     workers: int = 0,
     force: bool = False,
+    exclusions_manifest: Path = BENCHMARK_MANIFEST,
 ):
     """Reescala todo el dataset al lado corto configurado. Idempotente."""
+    exclusiones = raw.load_exclusions(exclusions_manifest)
     rels: list[str] = []
     for nombre in ("train", "val", "test"):
-        rels += splits.load_split(nombre, csv_path=csv_path, meta_dir=meta_dir)["rel"].tolist()
+        rels += splits.load_split(
+            nombre, csv_path=csv_path, meta_dir=meta_dir, exclusions=exclusiones
+        )["rel"].tolist()
 
     info = cache_mod.build_cache(
         sorted(set(rels)),
