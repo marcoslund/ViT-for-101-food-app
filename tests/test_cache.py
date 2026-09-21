@@ -218,32 +218,37 @@ def test_convierte_a_rgb_todas_las_paletas(tmp_path, food101_falso, mode):
         assert im.mode == "RGB", f"Modo {mode} no se convirtio a RGB"
 
 
-def test_archivo_truncado_no_se_acepta_silenciosamente(tmp_path, food101_falso, rels):
-    """Un archivo corrompido/truncado preexistente en el destino no se salta.
-    Si la primera corrida escribe atomicamente, no queda archivo truncado.
-    Si una corrida antigua no-atomica dejo uno, la nueva corrida lo detecta y reescribe.
+def test_archivo_truncado_preexistente_se_saltea(tmp_path, food101_falso, rels):
+    """Un archivo JPEG corrompido/truncado preexistente se salta con force=False.
+
+    La escritura atomica (temp + os.replace) previene corrupcion NUEVA pero no
+    repara archivos corrompidos de corridas antiguas no-atomicas. Con force=False,
+    esto es correcto: no queremos decodificar el cache (caro) para validar.
+    Con force=True, se reescribe incondicionalmente.
     """
     destino = tmp_path / "cache_truncado"
     rel = rels[0]
     destino_archivo = cache.cached_path(rel, cache_dir=destino)
 
-    # Primera corrida: construir cache normally
-    cache.build_cache(
+    # Simular archivo corrupto preexistente de old non-atomic run
+    destino_archivo.parent.mkdir(parents=True, exist_ok=True)
+    with open(destino_archivo, "wb") as f:
+        f.write(b"\xff\xd8\xff\xe0")  # JPEG header incompleto, no EOI
+
+    # Primera corrida con force=False: saltea el archivo corrupto
+    info = cache.build_cache(
         [rel],
         src_dir=food101_falso["images"],
         cache_dir=destino,
         short_side=64,
         quality=95,
         workers=1,
+        force=False,
     )
-    tamanio_original = destino_archivo.stat().st_size
+    assert info["n_salteadas"] == 1, "Archivo preexistente debe saltarse"
+    assert info["n_escritas"] == 0, "No debe reescribir sin force=True"
 
-    # Simular corrupcion: reemplazar con archivo truncado
-    destino_archivo.parent.mkdir(parents=True, exist_ok=True)
-    with open(destino_archivo, "wb") as f:
-        f.write(b"\xff\xd8\xff\xe0")  # JPEG header incompleto, no EOI
-
-    # Segunda corrida con force=True: debe detectar corrupto y reescribir
+    # Segunda corrida con force=True: reescribe el corrupto
     info = cache.build_cache(
         [rel],
         src_dir=food101_falso["images"],
@@ -253,10 +258,41 @@ def test_archivo_truncado_no_se_acepta_silenciosamente(tmp_path, food101_falso, 
         workers=1,
         force=True,
     )
-    tamanio_despues = destino_archivo.stat().st_size
+    assert info["n_escritas"] == 1, "Archivo debe reescribirse con force=True"
 
-    assert info["n_escritas"] == 1, "Archivo forzado debe escribirse"
-    assert tamanio_despues > tamanio_original * 0.5, "Archivo reescrito debe tener contenido"
     # Verificar que PIL puede abrir el archivo sin error
     with Image.open(destino_archivo) as im:
         assert im.mode == "RGB"
+
+
+def test_limpia_archivos_tmp_huerfanos(tmp_path, food101_falso, rels):
+    """Los archivos .tmp huerfanos de kills durantes save() se limpian al inicio.
+
+    SIGKILL o crash dejan .tmp en cache_dir. Una siguiente corrida los barren
+    y los reporta en el manifiesto, evitando acumulacion en ciclos Colab.
+    """
+    destino = tmp_path / "cache_tmp"
+    rel = rels[0]
+
+    # Simular archivos .tmp huerfanos (resultado de kill durante atomic write)
+    destino.mkdir(parents=True, exist_ok=True)
+    orphan_1 = destino / f"{rel.split('/')[-1]}_1.tmp"
+    orphan_2 = destino / f"{rel.split('/')[-1]}_2.tmp"
+    orphan_1.write_text("orphaned data 1")
+    orphan_2.write_text("orphaned data 2")
+
+    # Primera corrida: debe limpiar los orphans y procesarimagen normalmente
+    info = cache.build_cache(
+        [rel],
+        src_dir=food101_falso["images"],
+        cache_dir=destino,
+        short_side=64,
+        quality=95,
+        workers=1,
+    )
+
+    # Verificar que se limpieron
+    assert info["n_tmp_limpios"] == 2, "Debe limpiar 2 .tmp orphans"
+    assert not orphan_1.exists(), "Primer .tmp debe eliminarse"
+    assert not orphan_2.exists(), "Segundo .tmp debe eliminarse"
+    assert info["n_escritas"] == 1, "Imagen debe procesarse normalmente"

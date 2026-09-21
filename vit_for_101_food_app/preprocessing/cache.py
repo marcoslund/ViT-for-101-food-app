@@ -64,7 +64,7 @@ def resize_one(
             destino.parent.mkdir(parents=True, exist_ok=True)
             # Escribir a archivo temporal en el mismo directorio, luego reemplazar
             # atomicamente. Si el proceso muere durante save(), queda un .tmp en lugar
-            # de un JPEG corrompido en la ruta final. No hay garanta para archivos
+            # de un JPEG corrompido en la ruta final. No hay garantia para archivos
             # corrompidos preexistentes de corridas antiguas no-atomicas.
             fd, temp_path = tempfile.mkstemp(
                 suffix=".tmp", dir=destino.parent, prefix=destino.stem + "_"
@@ -86,6 +86,24 @@ def resize_one(
     return rel, "escrita"
 
 
+def _clean_stale_temps(cache_dir: Path) -> int:
+    """Elimina archivos .tmp huerfanos de corridas interrumpidas.
+    SIGKILL deja .tmp que nunca se limpian. Los barremos al inicio para no
+    acumularlos en ciclos Colab de crash-resume. No hay concurrencia: solo
+    un build_cache por cache_dir.
+    """
+    if not cache_dir.is_dir():
+        return 0
+    n_removed = 0
+    for tmp_file in cache_dir.rglob("*.tmp"):
+        try:
+            tmp_file.unlink()
+            n_removed += 1
+        except OSError:
+            pass
+    return n_removed
+
+
 def build_cache(
     rels: list[str],
     src_dir: Path = FOOD101_IMAGES_DIR,
@@ -97,6 +115,7 @@ def build_cache(
 ) -> dict:
     """Construye el cache. Idempotente: una corrida interrumpida se retoma sin repetir."""
     cache_dir.mkdir(parents=True, exist_ok=True)
+    n_tmp_limpios = _clean_stale_temps(cache_dir)
     workers = workers or min(8, os.cpu_count() or 1)
 
     conteos = {"escrita": 0, "salteada": 0, "fallida": 0}
@@ -122,6 +141,7 @@ def build_cache(
         "n_escritas": conteos["escrita"],
         "n_salteadas": conteos["salteada"],
         "n_fallidas": conteos["fallida"],
+        "n_tmp_limpios": n_tmp_limpios,
         "fallidas": sorted(fallidas),
         "pillow": Image.__version__,
     }
@@ -129,7 +149,7 @@ def build_cache(
 
     logger.success(
         f"cache: {conteos['escrita']} escritas, {conteos['salteada']} salteadas, "
-        f"{conteos['fallida']} fallidas en {cache_dir}"
+        f"{conteos['fallida']} fallidas, {n_tmp_limpios} .tmp limpios en {cache_dir}"
     )
     return manifiesto
 
