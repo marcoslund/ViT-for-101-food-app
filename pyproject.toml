@@ -67,6 +67,7 @@ deep = [
     "torch>=2.1",
     "torchvision>=0.16",
     "transformers>=5.4",
+    "accelerate>=1.1",  # Trainer de transformers: sin esto TrainingArguments falla
 ]
 
 
