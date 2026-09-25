@@ -55,7 +55,7 @@ SEED = 42
 MODELS = {
     "vit": "google/vit-base-patch16-224-in21k",
     "mobilevit": "apple/mobilevit-small",
-    "swin": "microsoft/swin-base-patch4-window12-384",
+    "swin": "microsoft/swin-tiny-patch4-window7-224",
 }
 
 # Artefactos del preprocesamiento. Los tres primeros se versionan: definen el split de
@@ -65,10 +65,8 @@ TRAIN_VAL_MANIFEST = PROCESSED_DATA_DIR / "train_val_split_manifest.json"
 LABEL_MAP = PROCESSED_DATA_DIR / "label_map.json"
 
 # Cache de imagenes reescaladas. Regenerable, no se versiona.
-# 384 es la mayor resolucion de entrada que pide algun modelo del registry (swin-base-384).
-# Sumar un modelo de mayor resolucion obliga a subir esto: lo verifica el test
-# test_cache_short_side_cubre_la_mayor_resolucion_de_entrada_del_registry.
-CACHE_SHORT_SIDE = 384
+# 288 es la mayor resolucion de entrada que pide algun modelo del registry.
+CACHE_SHORT_SIDE = 288
 CACHE_JPEG_QUALITY = 95
 CACHE_DIR = INTERIM_DATA_DIR / f"food-101-{CACHE_SHORT_SIDE}"
 CACHE_MANIFEST = CACHE_DIR / "cache_manifest.json"
