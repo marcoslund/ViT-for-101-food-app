@@ -1,0 +1,5 @@
+# Los artefactos versionados de data/processed/ se verifican por el sha256 de sus bytes
+# (manifiestos del EDA y del split). Con core.autocrlf=true, git en Windows los convierte a
+# CRLF al hacer checkout y el hash deja de coincidir aunque el contenido sea el mismo.
+data/processed/*.csv text eol=lf
+data/processed/*.json text eol=lf

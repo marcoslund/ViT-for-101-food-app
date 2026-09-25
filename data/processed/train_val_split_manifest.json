@@ -1,0 +1,13 @@
+{
+  "dataset": "Food-101 (Bossard et al., ECCV 2014)",
+  "split_origen": "train oficial (meta/train.txt)",
+  "seed": 42,
+  "val_fraction": 0.1,
+  "n_clases": 101,
+  "n_train": 68175,
+  "n_val": 7575,
+  "train_por_clase": 675,
+  "val_por_clase": 75,
+  "exclusiones_aplicadas": [],
+  "csv_sha256": "8f9fc5cb61748c625b746a91ad7276f0f267d5815aaaadabf30645e2c8348210"
+}

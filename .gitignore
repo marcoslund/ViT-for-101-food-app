@@ -11,6 +11,9 @@
 !/data/processed/*.csv
 !/data/processed/*.json
 
+/models/**
+!/models/.gitkeep
+
 # Mac OS-specific storage files
 .DS_Store
 

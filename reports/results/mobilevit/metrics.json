@@ -1,0 +1,89 @@
+{
+  "model_key": "mobilevit",
+  "checkpoint": "apple/mobilevit-small",
+  "receta": {
+    "epochs_max": 20,
+    "epochs_entrenadas": 20.0,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.01,
+    "warmup": 0.05,
+    "batch_size": 16,
+    "early_stopping_patience": 3,
+    "seed": 42
+  },
+  "tiempo_entrenamiento_s": 6885.688283205032,
+  "best_val_f1_macro": 0.8268775912915304,
+  "test": {
+    "n": 25250,
+    "n_clases": 101,
+    "accuracy": 0.8704554455445545,
+    "top5_accuracy": 0.9702970297029703,
+    "f1_macro": 0.8701313906033978,
+    "f1_weighted": 0.870131390603398
+  },
+  "benchmark_por_tercil": {
+    "subset": {
+      "n": 2525,
+      "n_clases": 101,
+      "accuracy": 0.8803960396039604,
+      "top5_accuracy": 0.9663366336633663,
+      "f1_macro": 0.8799073934757687,
+      "f1_weighted": 0.879907393475769
+    },
+    "facil": {
+      "n": 850,
+      "n_clases": 34,
+      "accuracy": 0.9376470588235294,
+      "top5_accuracy": 0.9835294117647059,
+      "f1_macro": 0.9576142509569536,
+      "f1_weighted": 0.9576142509569533
+    },
+    "medio": {
+      "n": 825,
+      "n_clases": 33,
+      "accuracy": 0.8945454545454545,
+      "top5_accuracy": 0.9745454545454545,
+      "f1_macro": 0.9257679353194993,
+      "f1_weighted": 0.9257679353194993
+    },
+    "dificil": {
+      "n": 850,
+      "n_clases": 34,
+      "accuracy": 0.8094117647058824,
+      "top5_accuracy": 0.9411764705882353,
+      "f1_macro": 0.8396526487607607,
+      "f1_weighted": 0.8396526487607608
+    }
+  },
+  "costo": {
+    "params_m": 5.002373,
+    "size_mb_fp32": 19.082538604736328,
+    "gflops": 4.000512256,
+    "gmacs": 2.000256128
+  },
+  "latencia": {
+    "gpu": {
+      "device": "NVIDIA GeForce RTX 5060 Laptop GPU",
+      "batch_size": 1,
+      "cpu_threads": 1,
+      "n_runs": 100,
+      "median_ms": 10.401250001450535,
+      "p90_ms": 11.576990001049126,
+      "mean_ms": 10.475652000168338
+    },
+    "cpu": {
+      "device": "cpu",
+      "batch_size": 1,
+      "cpu_threads": 1,
+      "n_runs": 100,
+      "median_ms": 106.55154999949445,
+      "p90_ms": 111.8046100018546,
+      "mean_ms": 99.67258899981971
+    }
+  },
+  "entorno": {
+    "torch": "2.11.0+cu128",
+    "transformers": "5.17.0",
+    "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU"
+  }
+}
