@@ -8,6 +8,8 @@ arquitecturas. Todo es generico sobre ``model_key`` (una clave del registry
 """
 
 from dataclasses import asdict, dataclass
+import inspect
+import math
 from pathlib import Path
 import shutil
 import time
@@ -101,31 +103,50 @@ def build_trainer(
 
     ``gradient_checkpointing`` cambia memoria por computo: es lo que hace entrar a
     swin-base-384 en una T4 de 16 GB. ``fp16`` solo si hay GPU.
+
+    El warmup se pasa como ``warmup_steps`` (entero, soportado por toda version) en vez
+    de ``warmup_ratio``, y los kwargs que la version instalada de ``TrainingArguments`` no
+    acepte se descartan con aviso: asi la misma receta corre en distintas versiones de
+    transformers sin romper.
     """
-    args = TrainingArguments(
-        output_dir=str(output_dir),
-        num_train_epochs=recipe.epochs,
-        per_device_train_batch_size=recipe.batch_size,
-        per_device_eval_batch_size=recipe.batch_size,
-        gradient_accumulation_steps=recipe.grad_accum_steps,
-        learning_rate=recipe.learning_rate,
-        weight_decay=recipe.weight_decay,
-        warmup_ratio=recipe.warmup_ratio,
-        eval_strategy="epoch",
-        save_strategy="epoch",
-        logging_strategy="steps",
-        logging_steps=200,
-        load_best_model_at_end=True,
-        metric_for_best_model=recipe.metric_for_best,
-        greater_is_better=True,
-        save_total_limit=2,
-        fp16=torch.cuda.is_available(),
-        gradient_checkpointing=gradient_checkpointing,
-        gradient_checkpointing_kwargs={"use_reentrant": False},
-        dataloader_num_workers=num_workers,
-        report_to="none",
-        seed=int(recipe.seed),
-    )
+    steps_por_epoca = math.ceil(len(train_dataset) / (recipe.batch_size * recipe.grad_accum_steps))
+    warmup_steps = int(steps_por_epoca * recipe.epochs * recipe.warmup_ratio)
+
+    deseados = {
+        "output_dir": str(output_dir),
+        "num_train_epochs": recipe.epochs,
+        "per_device_train_batch_size": recipe.batch_size,
+        "per_device_eval_batch_size": recipe.batch_size,
+        "gradient_accumulation_steps": recipe.grad_accum_steps,
+        "learning_rate": recipe.learning_rate,
+        "weight_decay": recipe.weight_decay,
+        "warmup_steps": warmup_steps,
+        "eval_strategy": "epoch",
+        "save_strategy": "epoch",
+        "logging_strategy": "steps",
+        "logging_steps": 200,
+        "load_best_model_at_end": True,
+        "metric_for_best_model": recipe.metric_for_best,
+        "greater_is_better": True,
+        "save_total_limit": 2,
+        "fp16": torch.cuda.is_available(),
+        "gradient_checkpointing": gradient_checkpointing,
+        "gradient_checkpointing_kwargs": {"use_reentrant": False},
+        "dataloader_num_workers": num_workers,
+        "report_to": "none",
+        "seed": int(recipe.seed),
+    }
+
+    validos = set(inspect.signature(TrainingArguments.__init__).parameters)
+    # eval_strategy se llamaba evaluation_strategy en versiones viejas.
+    if "eval_strategy" not in validos and "evaluation_strategy" in validos:
+        deseados["evaluation_strategy"] = deseados.pop("eval_strategy")
+    descartados = sorted(k for k in deseados if k not in validos)
+    if descartados:
+        logger.warning(f"esta version de transformers ignora {descartados} en TrainingArguments")
+    kwargs = {k: v for k, v in deseados.items() if k in validos}
+
+    args = TrainingArguments(**kwargs)
     return Trainer(
         model=model,
         args=args,
