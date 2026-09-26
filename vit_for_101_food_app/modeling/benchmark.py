@@ -176,7 +176,7 @@ def run_benchmark(
     plots.plot_training_curves(
         log_history,
         f"{model_key} - {config.MODELS[model_key]}",
-        config.FIGURES_DIR,
+        results_dir,
         prefix=f"curvas-{model_key}",
     )
 
