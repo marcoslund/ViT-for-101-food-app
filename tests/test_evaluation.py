@@ -109,3 +109,31 @@ def test_measure_latency_en_cpu():
     assert lat["batch_size"] == 1
     assert lat["n_runs"] == 5
     assert 0 < lat["median_ms"] <= lat["p90_ms"]
+
+
+def test_model_size_estimates_escala_con_la_precision():
+    # 1 M de parametros: 4 MB en fp32, la mitad en fp16, un cuarto en int8
+    est = evaluation.model_size_estimates(1024**2)
+    assert est["size_mb_fp32"] == pytest.approx(4.0)
+    assert est["size_mb_fp16"] == pytest.approx(2.0)
+    assert est["size_mb_int8"] == pytest.approx(1.0)
+
+
+def test_measure_quantized_cpu_reduce_tamanio_y_mide_latencia():
+    q = evaluation.measure_quantized_cpu(_Lineal(), torch.zeros(1, 8), n_warmup=2, n_runs=5)
+    if not q["soportado"]:
+        pytest.skip(f"cuantizacion no soportada en este entorno: {q.get('motivo')}")
+    assert q["dtype"] == "qint8"
+    assert q["size_mb"] > 0
+    assert 0 < q["median_ms"] <= q["p90_ms"]
+    assert q["n_runs"] == 5
+
+
+def test_measure_quantized_cpu_no_rompe_ante_fallos(monkeypatch):
+    def explota(*_args, **_kwargs):
+        raise RuntimeError("sin soporte de qint8")
+
+    monkeypatch.setattr(torch.ao.quantization, "quantize_dynamic", explota)
+    q = evaluation.measure_quantized_cpu(_Lineal(), torch.zeros(1, 8))
+    assert q["soportado"] is False
+    assert "sin soporte de qint8" in q["motivo"]

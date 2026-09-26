@@ -9,7 +9,9 @@ Tres piezas:
     comparar modelos sin reentrenar;
   - metricas sobre el subset del benchmark por tercil de dificultad
     (``benchmark_metrics``), que es lo que contesta la pregunta del proyecto;
-  - costo arquitectonico: FLOPs (``count_flops``) y latencia (``measure_latency``).
+  - costo arquitectonico: FLOPs (``count_flops``), tamanio de los pesos por precision
+    (``model_size_estimates``) y latencia en GPU/CPU (``measure_latency``), mas la medicion
+    del lado del dispositivo con el modelo cuantizado a int8 (``measure_quantized_cpu``).
 """
 
 import hashlib
@@ -134,6 +136,72 @@ def count_flops(model: torch.nn.Module, pixel_values: torch.Tensor) -> dict:
     return {"gflops": flops / 1e9, "gmacs": flops / 2e9}
 
 
+def model_size_estimates(n_params: int) -> dict:
+    """Tamanio en disco de los pesos segun la precision, en MB.
+
+    fp32 es lo que ocupa el checkpoint tal cual se entrena; fp16 e int8 son el tamanio
+    teorico que ocuparia el modelo cuantizado, que es lo que realmente importa para enviarlo
+    a un dispositivo con recursos limitados. Son cotas (n_params * bytes/parametro); la
+    cuantizacion real puede quedar por encima de la cota int8 porque no todas las capas se
+    cuantizan (ver ``measure_quantized_cpu``).
+    """
+    return {
+        "size_mb_fp32": n_params * 4 / 1024**2,
+        "size_mb_fp16": n_params * 2 / 1024**2,
+        "size_mb_int8": n_params * 1 / 1024**2,
+    }
+
+
+def _serialized_mb(module: torch.nn.Module) -> float:
+    """Tamanio real en disco del ``state_dict`` serializado, en MB."""
+    import io
+
+    buffer = io.BytesIO()
+    torch.save(module.state_dict(), buffer)
+    return buffer.getbuffer().nbytes / 1024**2
+
+
+def measure_quantized_cpu(
+    model: torch.nn.Module,
+    pixel_values: torch.Tensor,
+    n_warmup: int = 10,
+    n_runs: int = 50,
+) -> dict:
+    """Cuantiza el modelo a int8 (dinamica sobre capas ``Linear``) y lo mide en CPU.
+
+    Es la medicion concreta del lado del dispositivo: cuanto ocupa y cuanto tarda el modelo
+    que efectivamente se enviaria a un telefono, no el fp32 medido en el hardware de
+    entrenamiento. La cuantizacion dinamica solo afecta a las capas ``nn.Linear``; en
+    arquitecturas dominadas por convoluciones (p. ej. MobileViT) el ahorro real es menor que
+    la cota int8 teorica de ``model_size_estimates``.
+
+    Es robusta a proposito: si la version de torch o el modelo no soportan la cuantizacion,
+    devuelve ``{"soportado": False, ...}`` en lugar de interrumpir el benchmark.
+    """
+    import copy
+
+    try:
+        base = copy.deepcopy(model).to("cpu").eval()
+        qmodel = torch.ao.quantization.quantize_dynamic(
+            base, {torch.nn.Linear}, dtype=torch.qint8
+        )
+        size_mb = _serialized_mb(qmodel)
+        latencia = measure_latency(qmodel, pixel_values, "cpu", n_warmup=n_warmup, n_runs=n_runs)
+    except Exception as exc:  # noqa: BLE001 - reportamos el motivo, no rompemos la corrida
+        return {"soportado": False, "motivo": f"{type(exc).__name__}: {exc}"}
+
+    return {
+        "soportado": True,
+        "dtype": "qint8",
+        "capas_cuantizadas": "nn.Linear (dinamica)",
+        "size_mb": size_mb,
+        "median_ms": latencia["median_ms"],
+        "p90_ms": latencia["p90_ms"],
+        "mean_ms": latencia["mean_ms"],
+        "n_runs": latencia["n_runs"],
+    }
+
+
 def measure_latency(
     model: torch.nn.Module,
     pixel_values: torch.Tensor,
@@ -235,20 +303,24 @@ def architectural_cost(
 ) -> tuple[dict, dict]:
     """Costo arquitectonico de un modelo: ``(costo, latencia)``.
 
-    ``costo`` junta parametros, tamanio en disco (fp32) y FLOPs por imagen; ``latencia``
-    mide en GPU (si ``device`` es cuda) y siempre en CPU. Deja el modelo en ``device`` al
-    salir: ``measure_latency`` lo mueve a CPU para medir ahi, y hay que devolverlo.
+    ``costo`` junta parametros, tamanio en disco (fp32/fp16/int8) y FLOPs por imagen;
+    ``latencia`` mide en GPU (si ``device`` es cuda), en CPU fp32 y en CPU int8 cuantizado.
+    Las tres mediciones del lado del dispositivo (tamanio cuantizado y latencia en CPU) son
+    las que sostienen el eje "recursos acotados" mas alla de FLOPs/params medidos en la GPU
+    de entrenamiento. Deja el modelo en ``device`` al salir: las mediciones de CPU lo mueven
+    para medir ahi, y hay que devolverlo.
     """
     device = torch.device(device)
     n_params = sum(p.numel() for p in model.parameters())
     costo = {
         "params_m": n_params / 1e6,
-        "size_mb_fp32": n_params * 4 / 1024**2,
+        **model_size_estimates(n_params),
         **count_flops(model, pixel_values.to(device)),
     }
     latencia = {
         "gpu": measure_latency(model, pixel_values, device) if device.type == "cuda" else None,
         "cpu": measure_latency(model, pixel_values, "cpu"),
+        "cpu_int8": measure_quantized_cpu(model, pixel_values),
     }
     model.to(device)
     return costo, latencia

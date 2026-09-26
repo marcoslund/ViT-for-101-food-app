@@ -208,7 +208,7 @@ arquitectura al benchmark es agregar una línea al registry, no escribir un pipe
 | Módulo | Responsabilidad |
 |---|---|
 | `training.py` | Construcción del modelo, `TrainingRecipe` (idéntica para todos), `Trainer` de HuggingFace y `resolve_batch_plan` (batch/acumulación/checkpointing según resolución y GPU) |
-| `evaluation.py` | Predicciones por imagen, métricas por tercil, reporte por clase, confusiones, FLOPs y latencia — **el mismo código para todos los modelos** |
+| `evaluation.py` | Predicciones por imagen, métricas por tercil, reporte por clase, confusiones, FLOPs, tamaño de los pesos (fp32/fp16/int8) y latencia en GPU/CPU —incluida la medición del lado del dispositivo con el modelo **cuantizado a int8** en CPU—, **el mismo código para todos los modelos** |
 | `benchmark.py` | Orquestación: verifica artefactos, entrena, evalúa y escribe `metrics.json` + CSV |
 
 Hay **dos formas de correr el mismo pipeline**, que miden exactamente lo mismo:
