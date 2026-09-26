@@ -56,6 +56,7 @@ MODELS = {
     "vit": "google/vit-base-patch16-224-in21k",
     "mobilevit": "apple/mobilevit-small",
     "deit": "facebook/deit-tiny-patch16-224",
+    "swin": "microsoft/swin-tiny-patch4-window7-224",
 }
 
 # Artefactos del preprocesamiento. Los tres primeros se versionan: definen el split de
