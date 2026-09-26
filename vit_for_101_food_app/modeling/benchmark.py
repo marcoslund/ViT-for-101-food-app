@@ -45,12 +45,12 @@ def verify_artifacts(
         raise FileNotFoundError(
             "Faltan artefactos del preprocessing:\n"
             + "\n".join(f" - {p}" for p in faltan)
-            + "\n\nEjecuta primero `make preprocess` (o corre §0.3 en Colab)."
+            + "\n\nEjecuta primero `make preprocess` (o corre la seccion 0.3 en Colab)."
         )
     if not cache.cache_is_valid(cache_dir=cache_dir, short_side=short_side):
         raise RuntimeError(
             f"El cache en {cache_dir} existe pero no coincide con CACHE_SHORT_SIDE="
-            f"{short_side}. Regeneralo con `make cache` (o corre §0.3 en Colab)."
+            f"{short_side}. Regeneralo con `make cache` (o corre la seccion 0.3 en Colab)."
         )
 
     id2label, label2id = splits.load_label_map(label_map_path)

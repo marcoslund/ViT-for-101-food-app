@@ -1,6 +1,6 @@
 """CLI headless de fine-tuning: corre el benchmark completo para un modelo del registry.
 
-Es el mismo pipeline que los notebooks (§0.3 en adelante), pero sin celdas: pensado para
+Es el mismo pipeline que los notebooks (seccion 0.3 en adelante), pero sin celdas: pensado para
 una corrida desatendida en Kaggle, en una VM, o en Colab con la sesion en segundo plano.
 Toda la logica vive en ``benchmark.run_benchmark``; aca solo se parsea la linea de comando.
 

@@ -93,9 +93,9 @@ una muestra estratificada por clase.
 
 | Parámetro | Default | Efecto |
 |---|---|---|
-| `N_PER_CLASS_INSPECT` | 60 | Integridad, color, nitidez y hashes (§3-§4) |
-| `N_PER_CLASS_CLIP` | 30 | Embeddings CLIP (§5) |
-| `N_PER_CLASS_BENCH` | 25 | Tamaño del subset de evaluación (§6) |
+| `N_PER_CLASS_INSPECT` | 60 | Integridad, color, nitidez y hashes (secciones 3-4) |
+| `N_PER_CLASS_CLIP` | 30 | Embeddings CLIP (sección 5) |
+| `N_PER_CLASS_BENCH` | 25 | Tamaño del subset de evaluación (sección 6) |
 
 Si vas a correrlo más de una vez, poné `USE_DRIVE_CACHE = True`: el `.tar.gz` de 5 GB queda
 cacheado en Drive y las sesiones siguientes no lo vuelven a descargar.
@@ -208,7 +208,7 @@ Hay **dos formas de correr el mismo pipeline**, que miden exactamente lo mismo:
 
 - **Notebooks** (`notebooks/3.1-mobilevit.ipynb`, `3.2-swin.ipynb`, `3.3-deit.ipynb`) —
   celda por celda, con salidas visibles para el informe. Los tres son idénticos salvo
-  `MODEL_KEY`; están pensados para Colab (§0.2 y §0.3 arman el entorno y los datos).
+  `MODEL_KEY`; están pensados para Colab (secciones 0.2 y 0.3 arman el entorno y los datos).
 - **CLI headless** — para una corrida desatendida (Kaggle, VM):
 
   ```bash
@@ -232,7 +232,7 @@ source .venv/bin/activate
 make requirements           # uv sync
 ```
 
-`torch` y `transformers` pesan ~2.5 GB y solo hacen falta para la §5 del EDA, para el
+`torch` y `transformers` pesan ~2.5 GB y solo hacen falta para la sección 5 del EDA, para el
 preprocesamiento (`make verify`, y las secciones 3 en adelante del notebook de preprocesamiento) y
 para el entrenamiento. Van en un extra aparte:
 
