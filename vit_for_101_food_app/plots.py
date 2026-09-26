@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import typer
 
-from vit_for_101_food_app.config import FIGURES_DIR, MODELS, MODELS_DIR, REPORTS_DIR
+from vit_for_101_food_app.config import MODELS, MODELS_DIR, REPORTS_DIR
 
 app = typer.Typer()
 
@@ -214,13 +214,13 @@ def main(
     run_dir = run_dir or MODELS_DIR / model / "full"
     log_history = load_log_history(run_dir)
 
-    destino_csv = REPORTS_DIR / "results" / model / "training_history.csv"
-    destino_csv.parent.mkdir(parents=True, exist_ok=True)
-    history_table(log_history).to_csv(destino_csv, index=False)
-    logger.success(f"historial guardado en {destino_csv}")
+    results_dir = REPORTS_DIR / "results" / model
+    results_dir.mkdir(parents=True, exist_ok=True)
+    history_table(log_history).to_csv(results_dir / "training_history.csv", index=False)
+    logger.success(f"historial guardado en {results_dir}")
 
     plot_training_curves(
-        log_history, f"{model} - {MODELS.get(model, '')}", FIGURES_DIR, prefix=f"curvas-{model}"
+        log_history, f"{model} - {MODELS.get(model, '')}", results_dir, prefix=f"curvas-{model}"
     )
     if tensorboard:
         export_to_tensorboard(log_history, run_dir / "runs" / "reconstruido")

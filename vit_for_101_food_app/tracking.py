@@ -14,7 +14,7 @@ from loguru import logger
 import pandas as pd
 import typer
 
-from vit_for_101_food_app.config import FIGURES_DIR, PROJ_ROOT, REPORTS_DIR
+from vit_for_101_food_app.config import PROJ_ROOT, REPORTS_DIR
 
 app = typer.Typer()
 
@@ -62,10 +62,7 @@ def history_metrics(history: pd.DataFrame) -> list[tuple[str, float, int]]:
 
 
 def source_files(model_key: str) -> list[Path]:
-    results = RESULTS_DIR / model_key
-    files = sorted(p for p in results.iterdir() if p.is_file())
-    files += sorted(FIGURES_DIR.glob(f"curvas-{model_key}-*.png"))
-    return files
+    return sorted(p for p in (RESULTS_DIR / model_key).iterdir() if p.is_file())
 
 
 def fingerprint(files: list[Path]) -> str:
