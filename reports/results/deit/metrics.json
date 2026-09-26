@@ -1,0 +1,91 @@
+{
+  "model_key": "deit",
+  "checkpoint": "facebook/deit-tiny-patch16-224",
+  "receta": {
+    "epochs": 20,
+    "learning_rate": 0.0005,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.05,
+    "batch_size": 32,
+    "grad_accum_steps": 1,
+    "early_stopping_patience": 3,
+    "metric_for_best": "f1_macro",
+    "seed": 42,
+    "epochs_entrenadas": 8.519943688409198
+  },
+  "tiempo_entrenamiento_s": 600,
+  "best_val_f1_macro": 0.6759091191011396,
+  "test": {
+    "n": 25250,
+    "n_clases": 101,
+    "accuracy": 0.7313663366336633,
+    "top5_accuracy": 0.9184950495049505,
+    "f1_macro": 0.7317614936740422,
+    "f1_weighted": 0.7317614936740423
+  },
+  "benchmark_por_tercil": {
+    "subset": {
+      "n": 2525,
+      "n_clases": 101,
+      "accuracy": 0.7445544554455445,
+      "top5_accuracy": 0.9275247524752476,
+      "f1_macro": 0.7448606685103659,
+      "f1_weighted": 0.7448606685103661
+    },
+    "facil": {
+      "n": 850,
+      "n_clases": 34,
+      "accuracy": 0.831764705882353,
+      "top5_accuracy": 0.9623529411764706,
+      "f1_macro": 0.8799056944563234,
+      "f1_weighted": 0.8799056944563234
+    },
+    "medio": {
+      "n": 825,
+      "n_clases": 33,
+      "accuracy": 0.7539393939393939,
+      "top5_accuracy": 0.926060606060606,
+      "f1_macro": 0.8190879252481391,
+      "f1_weighted": 0.8190879252481391
+    },
+    "dificil": {
+      "n": 850,
+      "n_clases": 34,
+      "accuracy": 0.648235294117647,
+      "top5_accuracy": 0.8941176470588236,
+      "f1_macro": 0.7048111493111155,
+      "f1_weighted": 0.7048111493111155
+    }
+  },
+  "costo": {
+    "params_m": 5.543909,
+    "size_mb_fp32": 21.148334503173828,
+    "gflops": 2.507021184,
+    "gmacs": 1.253510592
+  },
+  "latencia": {
+    "gpu": {
+      "device": "Tesla T4",
+      "batch_size": 1,
+      "cpu_threads": 1,
+      "n_runs": 100,
+      "median_ms": 10.46059750024142,
+      "p90_ms": 11.343895100162626,
+      "mean_ms": 10.78330174007533
+    },
+    "cpu": {
+      "device": "cpu",
+      "batch_size": 1,
+      "cpu_threads": 1,
+      "n_runs": 100,
+      "median_ms": 38.1499499999336,
+      "p90_ms": 55.858680799519796,
+      "mean_ms": 43.105580019937406
+    }
+  },
+  "entorno": {
+    "torch": "2.11.0+cu128",
+    "transformers": "5.16.1",
+    "gpu": "Tesla T4"
+  }
+}
