@@ -42,7 +42,7 @@ class TrainingRecipe:
     a 5e-5 es lo primero a probar.
     """
 
-    epochs: int = 3  # arranque corto para validar el pipeline; subir a 20 para la corrida final
+    epochs: int = 20
     learning_rate: float = 5e-4
     weight_decay: float = 0.01
     warmup_ratio: float = 0.05
