@@ -229,6 +229,14 @@ Cada corrida escribe checkpoints en `models/<model>/full/` y resultados livianos
 mismo esquema para todos los modelos: la tabla comparativa del benchmark se arma juntando
 los `metrics.json` sin reentrenar.
 
+Cada corrida guarda también sus curvas de entrenamiento (`curvas-<model>-*.png`) y logs de
+TensorBoard. Para comparar los modelos en MLflow, a partir de `reports/results/`:
+
+```bash
+python -m vit_for_101_food_app.tracking
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
+
 ## Setup local
 
 El proyecto usa [uv](https://docs.astral.sh/uv/). Python ≥ 3.11.
@@ -246,6 +254,8 @@ para el entrenamiento. Van en un extra aparte:
 ```bash
 uv sync --extra deep
 ```
+
+MLflow va en el extra `tracking` (`uv sync --extra deep --extra tracking`).
 
 Después:
 

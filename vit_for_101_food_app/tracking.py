@@ -130,6 +130,7 @@ def main(
         experiment_id = client.create_experiment(EXPERIMENT, ARTIFACT_ROOT.as_uri())
     else:
         experiment_id = experiment.experiment_id
+    client.set_experiment_tag(experiment_id, "mlflow.experimentKind", "custom_model_development")
 
     modelos = model or sorted(p.parent.name for p in RESULTS_DIR.glob("*/metrics.json"))
     for m in modelos:
