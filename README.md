@@ -4,8 +4,9 @@
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-Benchmark de arquitecturas transformer de visión sobre **Food-101**, orientado a una decisión de
-despliegue: **¿conviene correr el modelo en el dispositivo o servirlo detrás de una API?**
+Benchmark de arquitecturas transformer de visión sobre **Food-101**, orientado a una pregunta de
+diseño: **¿qué arquitectura conviene para una aplicación con recursos acotados —posiblemente un
+dispositivo móvil— sin resignar capacidad de clasificación?**
 
 **Visión por Computadora III** — Carrera de Especialización en Inteligencia Artificial (CEIA) y
 Maestría en Inteligencia Artificial (MIA), FIUBA.
@@ -14,29 +15,35 @@ Maestría en Inteligencia Artificial (MIA), FIUBA.
 
 ## La pregunta
 
-Pensando en una hipotética aplicación para identificar y clasificar platos de comida, comparamos
-dos modelos bajo dos regímenes de despliegue distintos:
+Pensando en una hipotética aplicación para identificar y clasificar platos de comida a partir de una
+foto tomada con un dispositivo móvil, comparamos **varias arquitecturas transformer de visión con
+distintos compromisos entre capacidad y eficiencia**. Se evalúan arquitecturas pensadas para
+dispositivos con recursos limitados (p. ej. MobileViT) y se usa un **ViT estándar como referencia de
+mayor capacidad**.
 
-| Régimen | Modelo | Resolución nativa | Costo dominante |
-|---|---|---|---|
-| **En dispositivo** | MobileViT | 256×256 | Cómputo local, memoria del teléfono |
-| **Servido por API** | ViT (baseline) | 224×224 | Latencia de red, MB transferidos, costo por llamada |
+| Rol | Modelo | Resolución nativa |
+|---|---|---|
+| **Candidato liviano** | MobileViT | 256×256 |
+| **Referencia** | ViT (baseline) | 224×224 |
 
-La pregunta de fondo **no es cuál tiene mejor accuracy**, sino si el costo extra de cómputo,
-latencia y transferencia del modelo servido por API **se paga en capacidad discriminativa real**.
-Si la brecha entre ambos es plana a lo largo del ranking de dificultad de las clases, el modelo en
-dispositivo es la elección correcta y la API no se justifica.
+(El registry `config.MODELS` admite sumar más arquitecturas —Swin, DeiT, etc.— sin tocar el pipeline.)
+
+La comparación busca responder dos preguntas:
+
+1. ¿Cuánto rendimiento de clasificación se pierde —si es que se pierde— al usar arquitecturas más
+   livianas para este caso?
+2. ¿En qué clases se concentra esa diferencia: es pareja entre las 101 categorías o se acumula en los
+   platos visualmente más difíciles de distinguir?
+
+Si la brecha entre una arquitectura liviana y la referencia es plana a lo largo del ranking de
+dificultad de las clases, la arquitectura liviana es la elección correcta para el dispositivo.
 
 ### Alcance
 
-No desplegamos nada. Ambos modelos se entrenan y evalúan **localmente, sobre el mismo hardware**.
-Lo que se mide es el **costo arquitectónico** —parámetros, FLOPs, latencia de inferencia— y la
-conclusión sobre el régimen de despliegue se **argumenta** a partir de eso. La latencia de red y el
-costo por llamada de la columna de arriba son **supuestos declarados, no mediciones**.
-
-Más adelante pueden sumarse otras arquitecturas del lado de la API. El EDA está escrito para que
-eso no obligue a rehacer nada: todo lo que mide vale para cualquier modelo servido remotamente a
-224×224.
+No desplegamos nada. Todos los modelos se entrenan y evalúan **localmente, sobre el mismo hardware**.
+Se miden dos familias de métricas: **desempeño** (top-1 accuracy y macro-F1) y **costo
+arquitectónico** (parámetros, FLOPs, tamaño del modelo y latencia de inferencia). La adecuación a un
+dispositivo con recursos limitados se **argumenta** a partir de esas mediciones.
 
 ## El dataset
 
@@ -58,8 +65,8 @@ sin modificar: cualquier split propio haría los resultados incomparables con la
 
 - [x] **EDA** — [`notebooks/1.0-eda-food101.ipynb`](notebooks/1.0-eda-food101.ipynb)
 - [x] **Preprocesamiento** — [`notebooks/2.0-preprocessing.ipynb`](notebooks/2.0-preprocessing.ipynb)
-- [ ] Fine-tuning de MobileViT (en dispositivo)
-- [ ] Fine-tuning y evaluación del ViT baseline (servido por API)
+- [ ] Fine-tuning de MobileViT (candidato liviano)
+- [ ] Fine-tuning y evaluación del ViT baseline (referencia de mayor capacidad)
 - [ ] Tabla comparativa y contraste de la hipótesis
 
 ## EDA
@@ -75,7 +82,7 @@ diseño del benchmark.
 | 2. Geometría | ¿Cuánta imagen se pierde al recortar a 224 / 256? | Política de preprocesamiento por modelo |
 | 3. Integridad | ¿Hay imágenes rotas o en modos raros? | Lista de exclusión del dataloader |
 | 4. Ruido y duplicados | ¿Hay mislabels o fuga train↔test? | Validez del set de evaluación |
-| 5. Confusión entre clases | ¿Dónde está la dificultad real? | Hipótesis sobre dónde debería ganar el modelo servido por API |
+| 5. Confusión entre clases | ¿Dónde está la dificultad real? | Hipótesis sobre en qué clases la mayor capacidad debería marcar diferencia |
 | 6. Subset de benchmark | ¿Sobre qué imágenes exactas evaluamos? | Manifiesto reproducible y acotado en costo |
 | 7. Conclusiones | — | Tabla hallazgo → decisión de diseño |
 
