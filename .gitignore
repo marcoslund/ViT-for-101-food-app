@@ -207,3 +207,5 @@ cython_debug/
 docs/superpowers/
 CLAUDE.md
 .claude/
+
+transcripciones/

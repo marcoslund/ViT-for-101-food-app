@@ -20,10 +20,16 @@ import time
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, classification_report, f1_score
 import torch
 
-from vit_for_101_food_app.config import BENCHMARK_MANIFEST, BENCHMARK_SUBSET
+from vit_for_101_food_app.config import (
+    BENCHMARK_MANIFEST,
+    BENCHMARK_SUBSET,
+    FOOD101_META_DIR,
+    TRAIN_VAL_SPLIT,
+)
+from vit_for_101_food_app.preprocessing import splits
 
 TERCILES = ("facil", "medio", "dificil")
 
@@ -167,3 +173,82 @@ def measure_latency(
         "p90_ms": float(np.percentile(tiempos, 90)),
         "mean_ms": statistics.fmean(tiempos),
     }
+
+
+def evaluate_test(
+    trainer,
+    test_dataset,
+    id2label: dict[int, str],
+    csv_path: Path = TRAIN_VAL_SPLIT,
+    meta_dir: Path = FOOD101_META_DIR,
+) -> tuple[pd.DataFrame, dict, float]:
+    """Corre el modelo sobre test y arma predicciones + metricas globales.
+
+    Devuelve ``(predicciones, metricas, segundos)``. El ``frame`` del split se lee con el
+    mismo ``splits.load_split("test", ...)`` que uso el DataLoader, asi que queda en el
+    orden en que ``trainer.predict`` produjo los logits (contrato de ``predictions_frame``).
+    El caller decide si escribe el CSV: identico para el notebook y para el CLI headless.
+    """
+    t0 = time.time()
+    output = trainer.predict(test_dataset)
+    elapsed = time.time() - t0
+
+    frame = splits.load_split("test", csv_path=csv_path, meta_dir=meta_dir)
+    preds = predictions_frame(frame, output.predictions, id2label)
+    return preds, split_metrics(preds), elapsed
+
+
+def per_class_report(preds: pd.DataFrame, id2label: dict[int, str]) -> pd.DataFrame:
+    """Precision/recall/F1 por clase, ordenado de peor a mejor F1.
+
+    El orden es lo util para el informe: la cola de arriba son las clases donde el modelo
+    falla, que es donde se juega la pregunta del benchmark.
+    """
+    class_names = [id2label[i] for i in range(len(id2label))]
+    reporte = classification_report(
+        preds["label_id"],
+        preds["pred_id"],
+        labels=list(range(len(id2label))),
+        target_names=class_names,
+        output_dict=True,
+        zero_division=0,
+    )
+    return pd.DataFrame(reporte).T.loc[class_names].sort_values("f1-score")
+
+
+def frequent_confusions(preds: pd.DataFrame) -> pd.DataFrame:
+    """Pares (clase real -> clase predicha) mas frecuentes entre los errores."""
+    errores = preds[~preds["correct"]]
+    return (
+        errores.groupby(["class_dir", "pred_class"])
+        .size()
+        .rename("n")
+        .sort_values(ascending=False)
+        .reset_index()
+    )
+
+
+def architectural_cost(
+    model: torch.nn.Module,
+    pixel_values: torch.Tensor,
+    device: str | torch.device,
+) -> tuple[dict, dict]:
+    """Costo arquitectonico de un modelo: ``(costo, latencia)``.
+
+    ``costo`` junta parametros, tamanio en disco (fp32) y FLOPs por imagen; ``latencia``
+    mide en GPU (si ``device`` es cuda) y siempre en CPU. Deja el modelo en ``device`` al
+    salir: ``measure_latency`` lo mueve a CPU para medir ahi, y hay que devolverlo.
+    """
+    device = torch.device(device)
+    n_params = sum(p.numel() for p in model.parameters())
+    costo = {
+        "params_m": n_params / 1e6,
+        "size_mb_fp32": n_params * 4 / 1024**2,
+        **count_flops(model, pixel_values.to(device)),
+    }
+    latencia = {
+        "gpu": measure_latency(model, pixel_values, device) if device.type == "cuda" else None,
+        "cpu": measure_latency(model, pixel_values, "cpu"),
+    }
+    model.to(device)
+    return costo, latencia

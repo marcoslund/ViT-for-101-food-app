@@ -192,6 +192,36 @@ make preprocess   # = make data split cache verify
 `features.py preview` (fuera de `make preprocess`) escribe una grilla antes/después por modelo en
 `reports/figures/`, para inspección visual.
 
+## Entrenamiento y benchmark
+
+Todo el código de modelo y entrenamiento vive en `vit_for_101_food_app.modeling` y es
+**genérico sobre `model_key`** (una clave del registry `config.MODELS`): sumar una
+arquitectura al benchmark es agregar una línea al registry, no escribir un pipeline nuevo.
+
+| Módulo | Responsabilidad |
+|---|---|
+| `training.py` | Construcción del modelo, `TrainingRecipe` (idéntica para todos), `Trainer` de HuggingFace y `resolve_batch_plan` (batch/acumulación/checkpointing según resolución y GPU) |
+| `evaluation.py` | Predicciones por imagen, métricas por tercil, reporte por clase, confusiones, FLOPs y latencia — **el mismo código para todos los modelos** |
+| `benchmark.py` | Orquestación: verifica artefactos, entrena, evalúa y escribe `metrics.json` + CSV |
+
+Hay **dos formas de correr el mismo pipeline**, que miden exactamente lo mismo:
+
+- **Notebooks** (`notebooks/3.1-mobilevit.ipynb`, `3.2-swin.ipynb`, `3.3-deit.ipynb`) —
+  celda por celda, con salidas visibles para el informe. Los tres son idénticos salvo
+  `MODEL_KEY`; están pensados para Colab (§0.2 y §0.3 arman el entorno y los datos).
+- **CLI headless** — para una corrida desatendida (Kaggle, VM):
+
+  ```bash
+  python -m vit_for_101_food_app.modeling.train --model swin      # benchmark completo
+  python -m vit_for_101_food_app.modeling.train --model mobilevit --resume
+  python -m vit_for_101_food_app.modeling.predict --model swin --model-dir models/swin/full/best
+  ```
+
+Cada corrida escribe checkpoints en `models/<model>/full/` y resultados livianos
+(`metrics.json`, predicciones, tabla por tercil) en `reports/results/<model>/`, con el
+mismo esquema para todos los modelos: la tabla comparativa del benchmark se arma juntando
+los `metrics.json` sin reentrenar.
+
 ## Setup local
 
 El proyecto usa [uv](https://docs.astral.sh/uv/). Python ≥ 3.11.
@@ -257,8 +287,11 @@ Generada con [cookiecutter-data-science](https://cookiecutter-data-science.drive
     ├── dataset.py              <- CLI: descarga, split de validación y cache
     ├── features.py             <- CLI: verificación e inspección visual de los transforms
     ├── modeling
-    │   ├── predict.py          <- Inferencia (local y por API)
-    │   └── train.py            <- Fine-tuning de los modelos
+    │   ├── training.py         <- Modelo, receta y Trainer, genéricos sobre model_key
+    │   ├── evaluation.py       <- Protocolo de evaluación común (predicciones, terciles, FLOPs, latencia)
+    │   ├── benchmark.py        <- Orquestación: une preprocessing + training + evaluation
+    │   ├── train.py            <- CLI headless: corre el benchmark completo de un modelo
+    │   └── predict.py          <- CLI de inferencia sobre un modelo ya entrenado
     ├── plots.py                <- Visualizaciones
     └── preprocessing
         ├── raw.py              <- Índice canónico de Food-101 y descarga

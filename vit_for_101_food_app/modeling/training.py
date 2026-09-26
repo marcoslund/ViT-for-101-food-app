@@ -10,12 +10,14 @@ arquitecturas. Todo es generico sobre ``model_key`` (una clave del registry
 from dataclasses import asdict, dataclass
 import inspect
 import math
+import os
 from pathlib import Path
 import shutil
 import time
 
 from loguru import logger
 import numpy as np
+import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score
 import torch
 from transformers import (
@@ -27,6 +29,7 @@ from transformers import (
 )
 
 from vit_for_101_food_app.config import MODELS, SEED
+from vit_for_101_food_app.preprocessing import processors
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,61 @@ class TrainingRecipe:
     early_stopping_patience: int = 3
     metric_for_best: str = "f1_macro"
     seed: int = SEED
+
+
+@dataclass(frozen=True)
+class BatchPlan:
+    """Como se reparte el batch efectivo (=32) segun la resolucion del modelo y la GPU.
+
+    ``target_size >= 320`` (p. ej. swin-base a 384) es lo que llamamos "pesado": mas
+    memoria por imagen, batch fisico chico y ``gradient_checkpointing`` para que entre en
+    una T4 de 16 GB. Para los modelos livianos (mobilevit 256, deit/swin-tiny/vit 224) el
+    batch fisico ya es 32 y el checkpointing no hace falta. El batch efectivo es siempre
+    ``batch_size * grad_accum``, asi la receta de optimizacion no cambia entre modelos.
+    """
+
+    batch_size: int
+    grad_accum: int
+    num_workers: int
+    gradient_checkpointing: bool
+    target_size: int
+
+    @property
+    def effective_batch(self) -> int:
+        return self.batch_size * self.grad_accum
+
+
+def resolve_batch_plan(
+    model_key: str, num_workers: int | None = None, target_effective_batch: int = 32
+) -> BatchPlan:
+    """Elige batch fisico, acumulacion y workers para ``model_key`` en el hardware actual.
+
+    Centraliza la heuristica que antes estaba copiada en cada notebook: sin GPU baja el
+    batch, en GPU chica (<12 GB) lo baja a la mitad, y para modelos de alta resolucion
+    (>=320 px) usa batch fisico chico + gradient checkpointing. La resolucion se lee del
+    ``AutoImageProcessor`` del modelo, nunca se escribe a mano.
+    """
+    target_size = processors.spec_for(model_key).target_size
+    heavy = target_size >= 320
+
+    if torch.cuda.is_available():
+        gpu_mem_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+        if heavy:
+            batch_size = 8 if gpu_mem_gb >= 24 else 4  # T4: si hay OOM, baja a 2
+        else:
+            batch_size = 32 if gpu_mem_gb >= 12 else 16
+    else:
+        batch_size = 4 if heavy else 8
+
+    grad_accum = max(1, target_effective_batch // batch_size)
+    workers = min(4, os.cpu_count() or 1) if num_workers is None else num_workers
+    return BatchPlan(
+        batch_size=batch_size,
+        grad_accum=grad_accum,
+        num_workers=workers,
+        gradient_checkpointing=heavy,
+        target_size=target_size,
+    )
 
 
 def build_model(model_key: str, id2label: dict[int, str], label2id: dict[str, int]):
@@ -208,3 +266,14 @@ def software_versions() -> dict[str, str | None]:
 
 def recipe_as_dict(recipe: TrainingRecipe) -> dict:
     return asdict(recipe)
+
+
+def epoch_history(trainer: Trainer) -> pd.DataFrame:
+    """Metricas de validacion por epoca, extraidas del log del Trainer.
+
+    El ``log_history`` mezcla filas de train (loss por paso) y de eval (una por epoca);
+    filtrar por ``eval_loss`` no nulo deja solo las de validacion.
+    """
+    history = pd.DataFrame(trainer.state.log_history)
+    columnas = ["epoch", "eval_loss", "eval_accuracy", "eval_f1_macro", "eval_f1_weighted"]
+    return history[history["eval_loss"].notna()][columnas].reset_index(drop=True)
