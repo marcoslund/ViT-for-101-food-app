@@ -82,7 +82,6 @@ def split_metrics(preds: pd.DataFrame) -> dict:
         "accuracy": float(accuracy_score(y, p)),
         "top5_accuracy": float(preds["top5_correct"].mean()),
         "f1_macro": float(f1_score(y, p, labels=clases, average="macro", zero_division=0)),
-        "f1_weighted": float(f1_score(y, p, labels=clases, average="weighted", zero_division=0)),
     }
 
 

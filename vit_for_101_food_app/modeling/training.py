@@ -131,7 +131,6 @@ def compute_metrics(eval_pred) -> dict[str, float]:
     return {
         "accuracy": accuracy_score(labels, preds),
         "f1_macro": f1_score(labels, preds, average="macro", zero_division=0),
-        "f1_weighted": f1_score(labels, preds, average="weighted", zero_division=0),
     }
 
 
@@ -284,5 +283,5 @@ def epoch_history(trainer: Trainer) -> pd.DataFrame:
     filtrar por ``eval_loss`` no nulo deja solo las de validacion.
     """
     history = pd.DataFrame(trainer.state.log_history)
-    columnas = ["epoch", "eval_loss", "eval_accuracy", "eval_f1_macro", "eval_f1_weighted"]
+    columnas = ["epoch", "eval_loss", "eval_accuracy", "eval_f1_macro"]
     return history[history["eval_loss"].notna()][columnas].reset_index(drop=True)
