@@ -16,7 +16,7 @@ from pathlib import Path
 from loguru import logger
 import pandas as pd
 
-from vit_for_101_food_app import config
+from vit_for_101_food_app import config, plots
 from vit_for_101_food_app.modeling import evaluation, training
 from vit_for_101_food_app.preprocessing import cache, loaders, splits
 
@@ -170,6 +170,15 @@ def run_benchmark(
 
     elapsed_train = training.run_training(trainer, resume=resume)
     training.save_best_model(trainer, output_dir)
+
+    log_history = trainer.state.log_history
+    plots.history_table(log_history).to_csv(results_dir / "training_history.csv", index=False)
+    plots.plot_training_curves(
+        log_history,
+        f"{model_key} - {config.MODELS[model_key]}",
+        config.FIGURES_DIR,
+        prefix=f"curvas-{model_key}",
+    )
 
     test_preds, test_metrics, _ = evaluation.evaluate_test(trainer, test_ds, id2label)
     test_preds.to_csv(results_dir / "predictions_test.csv", index=False)
