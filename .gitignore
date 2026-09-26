@@ -13,6 +13,8 @@
 
 /models/**
 !/models/.gitkeep
+/mlflow.db
+/mlruns/
 
 # Mac OS-specific storage files
 .DS_Store
