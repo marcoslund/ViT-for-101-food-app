@@ -148,6 +148,15 @@ def guard_output_dir(output_dir: Path, resume: bool) -> None:
         )
 
 
+def _report_to() -> str:
+    try:
+        import tensorboard  # noqa: F401
+    except ImportError:
+        logger.warning("tensorboard no esta instalado: la corrida no deja logs para graficar")
+        return "none"
+    return "tensorboard"
+
+
 def build_trainer(
     model,
     recipe: TrainingRecipe,
@@ -191,7 +200,7 @@ def build_trainer(
         "gradient_checkpointing": gradient_checkpointing,
         "gradient_checkpointing_kwargs": {"use_reentrant": False},
         "dataloader_num_workers": num_workers,
-        "report_to": "none",
+        "report_to": _report_to(),
         "seed": int(recipe.seed),
     }
 
