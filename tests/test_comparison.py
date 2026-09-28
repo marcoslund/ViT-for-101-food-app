@@ -55,9 +55,17 @@ def results_dir(tmp_path):
         d = tmp_path / m
         d.mkdir()
         (d / "metrics.json").write_text(json.dumps(_metrics(m, f1, params)))
+        clases = [r[0] for r in rels]
+        pred = [c if ok else ("c" if c != "c" else "a") for c, ok in zip(clases, aciertos[m])]
         pd.DataFrame(
-            {"rel": rels, "class_dir": [r[0] for r in rels], "correct": aciertos[m]}
+            {"rel": rels, "class_dir": clases, "correct": aciertos[m], "pred_class": pred}
         ).to_csv(d / "predictions_test.csv", index=False)
+        errores = pd.DataFrame({"class_dir": clases, "pred_class": pred, "ok": aciertos[m]}).query(
+            "not ok"
+        )
+        errores.groupby(["class_dir", "pred_class"]).size().rename("n").reset_index().to_csv(
+            d / "confusiones_test.csv", index=False
+        )
         pd.DataFrame({"f1-score": {"a": 0.9, "b": 0.5 if m == "vit" else 0.8, "c": 0.4}}).to_csv(
             d / "report_por_clase_test.csv"
         )
@@ -107,14 +115,22 @@ def test_summary_table_separa_int8_cota_de_medido(results_dir):
 
 def test_load_predictions_une_por_imagen(results_dir):
     preds = comparison.load_predictions(["mobilevit", "vit"], results_dir)
-    assert list(preds.columns) == ["rel", "class_dir", "mobilevit", "vit"]
+    assert list(preds.columns) == [
+        "rel",
+        "class_dir",
+        "mobilevit",
+        "pred_mobilevit",
+        "vit",
+        "pred_vit",
+    ]
+    assert preds.set_index("rel").loc["c/1", "pred_mobilevit"] == "a"
     assert len(preds) == 6
 
 
 def test_load_predictions_rechaza_conjuntos_distintos(results_dir):
     p = pd.read_csv(results_dir / "vit" / "predictions_test.csv")
     p.iloc[:5].to_csv(results_dir / "vit" / "predictions_test.csv", index=False)
-    with pytest.raises(ValueError, match="mismas imagenes"):
+    with pytest.raises(ValueError, match="mismas imágenes"):
         comparison.load_predictions(["mobilevit", "vit"], results_dir)
 
 
@@ -179,3 +195,40 @@ def test_convergence_detecta_una_corrida_que_seguia_mejorando():
     assert fila["epoca_mejor"] == 5
     assert fila["mejora_ultimas"] == pytest.approx(0.15)
     assert fila["val_loss_min"] == pytest.approx(0.9)
+    assert fila["epoca_val_loss_min"] == 2
+
+
+def test_confusion_pairs_suma_los_modelos_y_ordena_por_total(results_dir):
+    tabla = comparison.confusion_pairs(["mobilevit", "vit"], results_dir=results_dir)
+    primera = tabla.iloc[0]
+    assert (primera["clase_real"], primera["clase_predicha"]) == ("c", "a")
+    assert (primera["mobilevit"], primera["vit"], primera["total"]) == (2, 1, 3)
+    # un par que un modelo nunca confundio cuenta 0, no NaN
+    par_bc = tabla[(tabla["clase_real"] == "b") & (tabla["clase_predicha"] == "c")].iloc[0]
+    assert (par_bc["mobilevit"], par_bc["vit"]) == (0, 1)
+
+
+def test_present_traduce_encabezados_modelos_y_terciles():
+    tabla = pd.DataFrame(
+        {"modelo": ["mobilevit"], "tercil": ["dificil"], "diff": [0.05], "gap_swin": [0.1]}
+    )
+    out = comparison.present(tabla)
+    assert list(out.columns) == ["Modelo", "Tercil", "Diferencia", "Brecha Swin-T"]
+    assert out.iloc[0].tolist()[:2] == ["MobileViT-S", "Difícil"]
+    # la tabla original no cambia: los CSV se guardan con las claves
+    assert list(tabla.columns) == ["modelo", "tercil", "diff", "gap_swin"]
+
+
+def test_unordered_pairs_suma_los_dos_sentidos():
+    conf = pd.DataFrame(
+        {
+            "clase_real": ["steak", "filet", "cake"],
+            "clase_predicha": ["filet", "steak", "mousse"],
+            "total": [5, 4, 6],
+        }
+    )
+    pares = comparison.unordered_pairs(conf, top=2)
+    assert pares.to_dict("records") == [
+        {"clase_a": "filet", "clase_b": "steak", "total": 9},
+        {"clase_a": "cake", "clase_b": "mousse", "total": 6},
+    ]

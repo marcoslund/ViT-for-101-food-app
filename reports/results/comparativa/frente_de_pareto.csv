@@ -1,0 +1,5 @@
+,Pareto en Parámetros (M),Pareto en GFLOPs,Pareto en Latencia CPU int8 (ms)
+mobilevit,True,True,True
+vit,False,False,False
+swin,False,False,False
+deit,False,True,True

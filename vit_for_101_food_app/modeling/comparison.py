@@ -1,14 +1,19 @@
-"""Comparacion entre modelos a partir de lo que ya escribio cada corrida en ``reports/results``.
+"""Comparación entre modelos a partir de lo que ya escribió cada corrida en ``reports/results``.
 
-No entrena ni evalua nada: junta los ``metrics.json``, las predicciones por imagen y los
-reportes por clase de cada modelo y contesta las dos preguntas del proyecto:
+No entrena ni evalúa nada: junta los ``metrics.json``, las predicciones por imagen, los
+reportes por clase y las confusiones de cada modelo, y produce las tablas y figuras que
+usa el informe:
 
-  1. cuanto rendimiento se pierde con una arquitectura mas liviana
-     (``summary_table``, ``paired_difference``, ``pareto_front``);
-  2. si esa diferencia es pareja entre clases o se concentra en las dificiles
-     (``gap_by_tercil``, ``per_class_gap``, ``flatness``).
+  - resultados globales y costo (``summary_table``, ``pareto_front``);
+  - diferencias pareadas entre modelos (``paired_difference``, ``differences_vs``);
+  - rendimiento según la dificultad de la clase (``gap_by_tercil``, ``per_class_gap``,
+    ``flatness``);
+  - confusiones compartidas (``confusion_pairs``) y convergencia (``convergence``).
 
 No importa torch: corre con las dependencias base del proyecto.
+
+Las claves de las tablas son identificadores (``snake_case``, sin tildes) para que los CSV
+se puedan releer desde código; ``present`` las traduce a encabezados legibles.
 """
 
 import hashlib
@@ -35,8 +40,8 @@ CLASS_DIFFICULTY = PROCESSED_DATA_DIR / "class_difficulty.csv"
 TERCILES = ("facil", "medio", "dificil")
 REFERENCE = "vit"
 
-# Un color fijo por modelo (paleta categorica validada para daltonismo, en este orden):
-# el color sigue al modelo en todas las figuras, nunca a su posicion en un ranking.
+# Un color fijo por modelo (paleta categórica validada para daltonismo, en este orden):
+# el color sigue al modelo en todas las figuras, nunca a su posición en un ranking.
 MODEL_COLORS = {
     "mobilevit": "#2a78d6",
     "vit": "#eb6834",
@@ -44,7 +49,84 @@ MODEL_COLORS = {
     "deit": "#eda100",
 }
 
-# Campos de la receta que tienen que coincidir para que la comparacion sea entre
+MODEL_NAMES = {
+    "mobilevit": "MobileViT-S",
+    "vit": "ViT-B/16",
+    "swin": "Swin-T",
+    "deit": "DeiT-Ti",
+}
+
+TERCIL_NAMES = {"facil": "Fácil", "medio": "Medio", "dificil": "Difícil", "subset": "Subset"}
+
+# Encabezados legibles para mostrar las tablas en el notebook y en el informe.
+COLUMN_LABELS = {
+    # resultados y costo
+    "checkpoint": "Checkpoint",
+    "accuracy": "Accuracy",
+    "top5_accuracy": "Accuracy top-5",
+    "f1_macro": "F1 macro",
+    "params_m": "Parámetros (M)",
+    "gflops": "GFLOPs",
+    "size_mb_fp32": "Tamaño fp32 (MB)",
+    "size_mb_int8_cota": "Tamaño int8, cota teórica (MB)",
+    "size_mb_int8_medido": "Tamaño int8, medido (MB)",
+    "cpu_ms": "Latencia CPU fp32 (ms)",
+    "cpu_int8_ms": "Latencia CPU int8 (ms)",
+    "gpu_ms": "Latencia GPU (ms)",
+    "epochs_entrenadas": "Épocas entrenadas",
+    "horas_entrenamiento": "Horas de entrenamiento",
+    # receta
+    "epochs": "Épocas (tope)",
+    "learning_rate": "Learning rate",
+    "weight_decay": "Weight decay",
+    "warmup_ratio": "Warmup",
+    "early_stopping_patience": "Paciencia (early stopping)",
+    "metric_for_best": "Métrica de selección",
+    "seed": "Semilla",
+    "batch_efectivo": "Batch efectivo",
+    "n_test": "Imágenes de test",
+    "entorno_torch": "PyTorch",
+    "entorno_transformers": "Transformers",
+    "entorno_gpu": "GPU",
+    # diferencias pareadas
+    "n": "Imágenes",
+    "acc_a": "Accuracy del modelo",
+    "acc_b": "Accuracy de la referencia",
+    "diff": "Diferencia",
+    "ic_bajo": "IC 95 % inferior",
+    "ic_alto": "IC 95 % superior",
+    "solo_a": "Acierta solo el modelo",
+    "solo_b": "Acierta solo la referencia",
+    "p_mcnemar": "p (McNemar)",
+    "tercil": "Tercil",
+    "modelo": "Modelo",
+    # por clase
+    "label": "Clase",
+    "margen": "Margen (EDA)",
+    "vecino_mas_cercano": "Vecina más confundible",
+    "gap_medio": "Brecha media",
+    "gap_desvio": "Desvío de la brecha",
+    "clases_gana": "Clases en que gana",
+    "clases_pierde": "Clases en que pierde",
+    "spearman_rho": "Spearman ρ",
+    "spearman_p": "p (Spearman)",
+    "pendiente": "Pendiente",
+    # confusiones
+    "clase_real": "Clase real",
+    "clase_predicha": "Clase predicha",
+    "total": "Total",
+    # convergencia
+    "epocas": "Épocas",
+    "mejor_val_f1": "Mejor F1 de validación",
+    "epoca_mejor": "Época del mejor F1",
+    "val_f1_final": "F1 de validación final",
+    "mejora_ultimas": "Mejora en las últimas 3 épocas",
+    "val_loss_min": "Pérdida de validación mínima",
+    "epoca_val_loss_min": "Época de la pérdida mínima",
+    "val_loss_final": "Pérdida de validación final",
+}
+
+# Campos de la receta que tienen que coincidir para que la comparación sea entre
 # arquitecturas. ``epochs_entrenadas`` puede diferir: la corta el early stopping.
 RECIPE_KEYS = (
     "epochs",
@@ -57,13 +139,44 @@ RECIPE_KEYS = (
 )
 
 
+def model_name(model: str) -> str:
+    return MODEL_NAMES.get(model, model)
+
+
+def present(table: pd.DataFrame) -> pd.DataFrame:
+    """Copia de ``table`` con encabezados, modelos y terciles en nombres legibles.
+
+    Solo para mostrar: los CSV se guardan con las claves originales.
+    """
+    nombres = {**MODEL_NAMES, **TERCIL_NAMES}
+
+    def traducir(valor):
+        if isinstance(valor, str):
+            if valor in nombres:
+                return nombres[valor]
+            for prefijo in ("f1_", "gap_", "pred_"):
+                if valor.startswith(prefijo) and valor[len(prefijo) :] in MODEL_NAMES:
+                    modelo = model_name(valor[len(prefijo) :])
+                    return {"f1_": f"F1 {modelo}", "gap_": f"Brecha {modelo}"}.get(
+                        prefijo, f"Predicción {modelo}"
+                    )
+            return COLUMN_LABELS.get(valor, valor)
+        return valor
+
+    out = table.rename(index=traducir, columns=traducir)
+    for col in out.columns:
+        if out[col].dtype == object or pd.api.types.is_string_dtype(out[col]):
+            out[col] = out[col].map(lambda v: nombres.get(v, v) if isinstance(v, str) else v)
+    return out
+
+
 # --------------------------------------------------------------------------------------
 # Carga
 # --------------------------------------------------------------------------------------
 
 
 def available_models(results_dir: Path = RESULTS_DIR) -> list[str]:
-    """Modelos con ``metrics.json``, en el orden de ``MODEL_COLORS`` y despues alfabetico."""
+    """Modelos con ``metrics.json``, en el orden de ``MODEL_COLORS`` y después alfabético."""
     encontrados = {p.parent.name for p in Path(results_dir).glob("*/metrics.json")}
     orden = [m for m in MODEL_COLORS if m in encontrados]
     return orden + sorted(encontrados - set(orden))
@@ -80,7 +193,7 @@ def check_comparable(metrics: dict[str, dict]) -> pd.DataFrame:
     """Receta y entorno de cada corrida, lado a lado. Error si la receta difiere.
 
     El entorno (GPU, versiones) no corta: se devuelve para que quede a la vista, porque
-    las latencias solo son comparables si se midieron en la misma maquina.
+    las latencias solo son comparables si se midieron en la misma máquina.
     """
     filas = {}
     for m, d in metrics.items():
@@ -104,20 +217,23 @@ def check_comparable(metrics: dict[str, dict]) -> pd.DataFrame:
 
 
 def load_predictions(models: list[str], results_dir: Path = RESULTS_DIR) -> pd.DataFrame:
-    """Aciertos por imagen de todos los modelos en una sola tabla (una fila por imagen).
+    """Predicciones por imagen de todos los modelos en una sola tabla.
 
-    Error si los modelos no predijeron exactamente las mismas imagenes: la comparacion
-    pareada (``paired_difference``) necesita el mismo conjunto, imagen por imagen.
+    Una fila por imagen: la columna ``<modelo>`` dice si acertó y ``pred_<modelo>``, qué
+    clase predijo. Error si los modelos no predijeron exactamente las mismas imágenes:
+    la comparación pareada (``paired_difference``) necesita el mismo conjunto.
     """
     base = None
     for m in models:
         p = pd.read_csv(Path(results_dir) / m / "predictions_test.csv")
-        p = p[["rel", "class_dir", "correct"]].rename(columns={"correct": m})
+        p = p[["rel", "class_dir", "correct", "pred_class"]].rename(
+            columns={"correct": m, "pred_class": f"pred_{m}"}
+        )
         if base is None:
             base = p
             continue
         if set(p["rel"]) != set(base["rel"]):
-            raise ValueError(f"{m} no predijo las mismas imagenes que {models[0]}")
+            raise ValueError(f"{m} no predijo las mismas imágenes que {models[0]}")
         base = base.merge(p.drop(columns="class_dir"), on="rel", validate="1:1")
     return base
 
@@ -140,7 +256,7 @@ def load_benchmark_subset(
 
 
 def load_histories(models: list[str], results_dir: Path = RESULTS_DIR) -> dict[str, pd.DataFrame]:
-    """Filas de validacion de ``training_history.csv`` (una por epoca)."""
+    """Filas de validación de ``training_history.csv`` (una por época)."""
     out = {}
     for m in models:
         h = pd.read_csv(Path(results_dir) / m / "training_history.csv")
@@ -149,12 +265,12 @@ def load_histories(models: list[str], results_dir: Path = RESULTS_DIR) -> dict[s
 
 
 # --------------------------------------------------------------------------------------
-# Pregunta 1: cuanto se pierde
+# Resultados globales y diferencias entre modelos
 # --------------------------------------------------------------------------------------
 
 
 def summary_table(metrics: dict[str, dict]) -> pd.DataFrame:
-    """Desempenio y costo de cada modelo en una fila."""
+    """Desempeño y costo de cada modelo en una fila."""
     filas = {}
     for m, d in metrics.items():
         costo, lat = d["costo"], d["latencia"]
@@ -179,10 +295,10 @@ def summary_table(metrics: dict[str, dict]) -> pd.DataFrame:
 
 
 def paired_difference(correct_a, correct_b, alpha: float = 0.05) -> dict:
-    """Diferencia de accuracy ``a - b`` sobre las mismas imagenes, con IC y McNemar.
+    """Diferencia de accuracy ``a - b`` sobre las mismas imágenes, con IC y McNemar.
 
-    Como los dos modelos se evaluan sobre las mismas imagenes, lo que informa es en
-    cuantas acierta uno y el otro no (``solo_a``, ``solo_b``); las que aciertan o
+    Como los dos modelos se evalúan sobre las mismas imágenes, lo que informa es en
+    cuántas acierta uno y el otro no (``solo_a``, ``solo_b``); las que aciertan o
     fallan los dos no aportan. El IC es el de Wald para proporciones pareadas y el
     p-valor, el de McNemar exacto (binomial sobre los pares discordantes).
     """
@@ -220,7 +336,7 @@ def differences_vs(
 
 
 def pareto_front(summary: pd.DataFrame, cost_col: str, perf_col: str = "f1_macro") -> pd.Series:
-    """True para los modelos que ningun otro supera a la vez en costo y en desempenio."""
+    """True para los modelos que ningún otro supera a la vez en costo y en desempeño."""
     datos = summary[[cost_col, perf_col]].astype(float)
     frente = {}
     for m, fila in datos.iterrows():
@@ -232,7 +348,7 @@ def pareto_front(summary: pd.DataFrame, cost_col: str, perf_col: str = "f1_macro
 
 
 # --------------------------------------------------------------------------------------
-# Pregunta 2: donde se concentra la diferencia
+# Rendimiento según la dificultad de la clase
 # --------------------------------------------------------------------------------------
 
 
@@ -288,8 +404,8 @@ def flatness(per_class: pd.DataFrame, model: str) -> dict:
     """Si la brecha de ``model`` depende de la dificultad de la clase.
 
     Spearman entre la brecha de F1 por clase y el margen del EDA (margen bajo = clase
-    dificil). Una brecha plana da rho cercano a 0; una brecha que se concentra en las
-    clases dificiles da rho de signo definido.
+    difícil). Una brecha pareja da ρ cercano a 0; una brecha que se concentra en las
+    clases difíciles da ρ negativo.
     """
     gap = per_class[f"gap_{model}"]
     rho, p = stats.spearmanr(per_class["margen"], gap)
@@ -306,24 +422,72 @@ def flatness(per_class: pd.DataFrame, model: str) -> dict:
     }
 
 
-def convergence(histories: dict[str, pd.DataFrame], ultimas: int = 3) -> pd.DataFrame:
-    """Si cada corrida habia dejado de mejorar cuando termino.
+def confusion_pairs(
+    models: list[str], top: int = 12, results_dir: Path = RESULTS_DIR
+) -> pd.DataFrame:
+    """Pares (clase real → clase predicha) más frecuentes, con el conteo de cada modelo.
 
-    ``mejora_ultimas`` es cuanto subio el F1 de validacion en las ultimas ``ultimas``
-    epocas: si sigue siendo positiva al llegar al tope de epocas, el modelo no convergio
+    Se ordenan por el total sobre todos los modelos: arriba quedan las confusiones que
+    comparten las arquitecturas, que hablan más del dataset que de un modelo.
+    """
+    tabla = None
+    for m in models:
+        c = pd.read_csv(Path(results_dir) / m / "confusiones_test.csv").rename(
+            columns={"class_dir": "clase_real", "pred_class": "clase_predicha", "n": m}
+        )
+        tabla = (
+            c
+            if tabla is None
+            else tabla.merge(c, on=["clase_real", "clase_predicha"], how="outer")
+        )
+    tabla[models] = tabla[models].fillna(0).astype(int)
+    tabla["total"] = tabla[models].sum(axis=1)
+    return (
+        tabla.sort_values(["total", "clase_real"], ascending=[False, True])
+        .head(top)
+        .reset_index(drop=True)
+    )
+
+
+def unordered_pairs(confusions: pd.DataFrame, top: int = 4) -> pd.DataFrame:
+    """Suma las confusiones en los dos sentidos (A → B y B → A) sobre todos los modelos.
+
+    ``confusions`` es la salida de ``confusion_pairs`` (conviene pedirla con ``top``
+    grande). Devuelve los ``top`` pares con más confusiones en total.
+    """
+    pares = confusions.assign(
+        clase_a=confusions[["clase_real", "clase_predicha"]].min(axis=1),
+        clase_b=confusions[["clase_real", "clase_predicha"]].max(axis=1),
+    )
+    return (
+        pares.groupby(["clase_a", "clase_b"], as_index=False)["total"]
+        .sum()
+        .sort_values(["total", "clase_a"], ascending=[False, True])
+        .head(top)
+        .reset_index(drop=True)
+    )
+
+
+def convergence(histories: dict[str, pd.DataFrame], ultimas: int = 3) -> pd.DataFrame:
+    """Si cada corrida había dejado de mejorar cuando terminó.
+
+    ``mejora_ultimas`` es cuánto subió el F1 de validación en las últimas ``ultimas``
+    épocas: si sigue siendo positiva al llegar al tope de épocas, el modelo no convergió
     y su resultado es una cota inferior de lo que la arquitectura puede dar.
     """
     filas = {}
     for m, h in histories.items():
         f1 = h["eval_f1_macro"].to_numpy()
+        loss = h["eval_loss"].to_numpy()
         filas[m] = {
             "epocas": len(f1),
             "mejor_val_f1": float(f1.max()),
             "epoca_mejor": int(f1.argmax()) + 1,
             "val_f1_final": float(f1[-1]),
             "mejora_ultimas": float(f1[-1] - f1[-1 - ultimas]) if len(f1) > ultimas else None,
-            "val_loss_min": float(h["eval_loss"].min()),
-            "val_loss_final": float(h["eval_loss"].iloc[-1]),
+            "val_loss_min": float(loss.min()),
+            "epoca_val_loss_min": int(loss.argmin()) + 1,
+            "val_loss_final": float(loss[-1]),
         }
     return pd.DataFrame(filas).T.infer_objects()
 
@@ -346,6 +510,10 @@ def _style(ax, title: str, xlabel: str, ylabel: str) -> None:
     ax.tick_params(colors=INK_MUTED, labelsize=8.5, length=0)
 
 
+def _suptitle(fig, text: str) -> None:
+    fig.suptitle(text, x=0.02, ha="left", fontsize=12, color=INK, fontweight="bold")
+
+
 def _p_text(p: float) -> str:
     return "p < 0.001" if p < 0.001 else f"p = {p:.3f}"
 
@@ -362,7 +530,7 @@ def plot_tradeoff(
     """F1 contra cada eje de costo, un panel por eje (nunca dos escalas en un mismo eje).
 
     Cada punto lleva el nombre del modelo al lado: la identidad no depende solo del
-    color. La linea punteada une el frente de Pareto de ese eje.
+    color. La línea punteada une el frente de Pareto de ese eje.
     """
     fig, axes = plt.subplots(1, len(costs), figsize=(4.2 * len(costs), 4), sharey=True)
     axes = np.atleast_1d(axes)
@@ -383,7 +551,7 @@ def plot_tradeoff(
                 zorder=2,
             )
             ax.annotate(
-                m,
+                model_name(m),
                 (fila[col], fila[perf_col]),
                 xytext=(7, -3),
                 textcoords="offset points",
@@ -393,13 +561,11 @@ def plot_tradeoff(
         ax.set_xscale("log")
         ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
         ax.xaxis.set_minor_formatter(NullFormatter())
-        ax.margins(x=0.15)
+        ax.margins(x=0.2)
         _style(
             ax, etiqueta, f"{etiqueta} (escala log)", "F1 macro (test)" if ax is axes[0] else ""
         )
-    fig.suptitle(
-        "Desempenio contra costo", x=0.02, ha="left", fontsize=12, color=INK, fontweight="bold"
-    )
+    _suptitle(fig, "Desempeño frente al costo")
     fig.tight_layout()
     return fig
 
@@ -421,32 +587,34 @@ def plot_gap_by_tercil(gaps: pd.DataFrame, reference: str = REFERENCE) -> plt.Fi
             xs, y, yerr=err, fmt="none", ecolor=_color(m), elinewidth=2, capsize=0, zorder=1
         )
         ax.plot(xs, y, color=_color(m), linewidth=1, alpha=0.5, zorder=1)
-        ax.scatter(xs, y, s=64, color=_color(m), edgecolor="white", linewidth=2, zorder=2, label=m)
+        ax.scatter(
+            xs,
+            y,
+            s=64,
+            color=_color(m),
+            edgecolor="white",
+            linewidth=2,
+            zorder=2,
+            label=model_name(m),
+        )
         ax.annotate(
-            m,
+            model_name(m),
             (xs[-1], y.iloc[-1]),
             xytext=(8, -3),
             textcoords="offset points",
             fontsize=8.5,
             color=INK,
         )
-    ax.set_xticks(x, list(TERCILES))
-    ax.set_xlim(-0.5, len(TERCILES) - 0.2)
+    ax.set_xticks(x, [TERCIL_NAMES[t] for t in TERCILES])
+    ax.set_xlim(-0.5, len(TERCILES) - 0.1)
     _style(
         ax,
-        f"Diferencia de accuracy contra {reference}, por tercil (IC 95 %)",
+        f"Diferencia de accuracy contra {model_name(reference)}, por tercil (IC 95 %)",
         "tercil de dificultad de la clase (EDA)",
         "puntos porcentuales",
     )
     ax.legend(frameon=False, fontsize=8.5, labelcolor=INK, loc="upper left")
-    fig.suptitle(
-        "Donde se concentra la brecha",
-        x=0.02,
-        ha="left",
-        fontsize=12,
-        color=INK,
-        fontweight="bold",
-    )
+    _suptitle(fig, "Brecha según la dificultad de la clase")
     fig.tight_layout()
     return fig
 
@@ -474,7 +642,7 @@ def plot_class_gap(
     extremos = pd.concat([gap.nsmallest(n_etiquetas), gap.nlargest(n_etiquetas)])
     for clase, valor in extremos.items():
         ax.annotate(
-            clase,
+            per_class.loc[clase, "label"],
             (per_class.loc[clase, "margen"], valor),
             xytext=(5, 2),
             textcoords="offset points",
@@ -485,7 +653,7 @@ def plot_class_gap(
     ax.text(
         0.99,
         0.03,
-        f"Spearman rho = {res['spearman_rho']:.2f} ({_p_text(res['spearman_p'])})",
+        f"Spearman ρ = {res['spearman_rho']:.2f} ({_p_text(res['spearman_p'])})",
         transform=ax.transAxes,
         ha="right",
         fontsize=8.5,
@@ -493,24 +661,17 @@ def plot_class_gap(
     )
     _style(
         ax,
-        f"F1 de {model} menos F1 de {reference}, por clase",
-        "margen de la clase en el EDA (izquierda = mas dificil)",
+        f"F1 de {model_name(model)} menos F1 de {model_name(reference)}, por clase",
+        "margen de la clase en el EDA (a la izquierda, más difícil)",
         "puntos de F1",
     )
-    fig.suptitle(
-        f"{model}: la brecha segun la dificultad de la clase",
-        x=0.02,
-        ha="left",
-        fontsize=12,
-        color=INK,
-        fontweight="bold",
-    )
+    _suptitle(fig, f"{model_name(model)}: brecha por clase según su dificultad")
     fig.tight_layout()
     return fig
 
 
 def plot_validation_curves(histories: dict[str, pd.DataFrame]) -> plt.Figure:
-    """F1 macro de validacion por epoca, todos los modelos juntos."""
+    """F1 macro de validación por época, todos los modelos juntos."""
     fig, ax = plt.subplots(figsize=(7, 4.4))
     fig.patch.set_facecolor("white")
     for m, h in histories.items():
@@ -521,7 +682,7 @@ def plot_validation_curves(histories: dict[str, pd.DataFrame]) -> plt.Figure:
             linewidth=2,
             marker="o",
             markersize=3.5,
-            label=m,
+            label=model_name(m),
         )
     # Etiquetas al final de cada curva, separadas para que no se pisen si terminan parejas.
     x_fin = max(h["epoch"].iloc[-1] for h in histories.values())
@@ -531,11 +692,17 @@ def plot_validation_curves(histories: dict[str, pd.DataFrame]) -> plt.Figure:
     y_prev = None
     for valor, m in finales:
         y = valor if y_prev is None else min(valor, y_prev - 0.018)
-        ax.annotate(f"{m} {valor:.3f}", (x_fin + 0.6, y), va="center", fontsize=8.5, color=INK)
+        ax.annotate(
+            f"{model_name(m)} {valor:.3f}",
+            (x_fin + 0.6, y),
+            va="center",
+            fontsize=8.5,
+            color=INK,
+        )
         y_prev = y
-    ax.set_xlim(right=x_fin + 5)
-    _style(ax, "F1 macro de validacion por epoca", "epoca", "F1 macro")
+    ax.set_xlim(right=x_fin + 6)
+    _style(ax, "F1 macro de validación por época", "época", "F1 macro")
     ax.legend(frameon=False, fontsize=8.5, labelcolor=INK, loc="lower right")
-    fig.suptitle("Convergencia", x=0.02, ha="left", fontsize=12, color=INK, fontweight="bold")
+    _suptitle(fig, "Convergencia del entrenamiento")
     fig.tight_layout()
     return fig
