@@ -21,6 +21,7 @@ import json
 import math
 from pathlib import Path
 
+from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, NullFormatter
 import numpy as np
@@ -168,6 +169,33 @@ def present(table: pd.DataFrame) -> pd.DataFrame:
         if out[col].dtype == object or pd.api.types.is_string_dtype(out[col]):
             out[col] = out[col].map(lambda v: nombres.get(v, v) if isinstance(v, str) else v)
     return out
+
+
+def present_paired(table: pd.DataFrame) -> pd.DataFrame:
+    """Tabla de diferencias pareadas lista para leer.
+
+    Cada fila compara un modelo A contra un modelo B (``paired_difference(a, b)``): las
+    accuracies van en porcentaje y la diferencia A − B y su IC, en puntos porcentuales.
+    """
+    out = table.copy()
+    for col in ("acc_a", "acc_b", "diff", "ic_bajo", "ic_alto"):
+        if col in out:
+            out[col] = out[col] * 100
+    for col in ("n", "solo_a", "solo_b"):
+        if col in out:
+            out[col] = out[col].astype(int)
+    if "p_mcnemar" in out:
+        out["p_mcnemar"] = out["p_mcnemar"].map(lambda p: "< 0.001" if p < 0.001 else f"{p:.3f}")
+    etiquetas = {
+        "acc_a": "Accuracy de A (%)",
+        "acc_b": "Accuracy de B (%)",
+        "diff": "Diferencia A − B (puntos)",
+        "ic_bajo": "IC 95 %, desde (puntos)",
+        "ic_alto": "IC 95 %, hasta (puntos)",
+        "solo_a": "Acierta solo A",
+        "solo_b": "Acierta solo B",
+    }
+    return present(out.rename(columns=etiquetas))
 
 
 # --------------------------------------------------------------------------------------
@@ -530,7 +558,8 @@ def plot_tradeoff(
     """F1 contra cada eje de costo, un panel por eje (nunca dos escalas en un mismo eje).
 
     Cada punto lleva el nombre del modelo al lado: la identidad no depende solo del
-    color. La línea punteada une el frente de Pareto de ese eje.
+    color. Los modelos del frente de Pareto de cada eje llevan un anillo y, si son más
+    de uno, una línea punteada que los une (con uno solo no hay nada que unir).
     """
     fig, axes = plt.subplots(1, len(costs), figsize=(4.2 * len(costs), 4), sharey=True)
     axes = np.atleast_1d(axes)
@@ -540,6 +569,9 @@ def plot_tradeoff(
         frente = pareto_front(datos, col, perf_col)
         pf = datos[frente].sort_values(col)
         ax.plot(pf[col], pf[perf_col], color=INK_MUTED, linewidth=1, linestyle=":", zorder=1)
+        ax.scatter(
+            pf[col], pf[perf_col], s=260, facecolors="none", edgecolors=INK, linewidth=1, zorder=1
+        )
         for m, fila in datos.iterrows():
             ax.scatter(
                 fila[col],
@@ -553,7 +585,7 @@ def plot_tradeoff(
             ax.annotate(
                 model_name(m),
                 (fila[col], fila[perf_col]),
-                xytext=(7, -3),
+                xytext=(11, -3),
                 textcoords="offset points",
                 fontsize=9,
                 color=INK,
@@ -565,6 +597,20 @@ def plot_tradeoff(
         _style(
             ax, etiqueta, f"{etiqueta} (escala log)", "F1 macro (test)" if ax is axes[0] else ""
         )
+    anillo = Line2D(
+        [],
+        [],
+        marker="o",
+        markersize=12,
+        markerfacecolor="none",
+        markeredgecolor=INK,
+        linestyle=":",
+        color=INK_MUTED,
+        label="frente de Pareto",
+    )
+    axes[0].legend(
+        handles=[anillo], frameon=False, fontsize=8.5, labelcolor=INK, loc="lower right"
+    )
     _suptitle(fig, "Desempeño frente al costo")
     fig.tight_layout()
     return fig

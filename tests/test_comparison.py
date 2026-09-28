@@ -232,3 +232,12 @@ def test_unordered_pairs_suma_los_dos_sentidos():
         {"clase_a": "filet", "clase_b": "steak", "total": 9},
         {"clase_a": "cake", "clase_b": "mousse", "total": 6},
     ]
+
+
+def test_present_paired_pasa_a_puntos_y_nombra_a_y_b():
+    tabla = pd.DataFrame([comparison.paired_difference([True, True, False], [True, False, False])])
+    out = comparison.present_paired(tabla)
+    assert out.loc[0, "Diferencia A − B (puntos)"] == pytest.approx(100 / 3)
+    assert out.loc[0, "Acierta solo A"] == 1 and out.loc[0, "Acierta solo B"] == 0
+    assert out.loc[0, "p (McNemar)"] == "1.000"
+    assert out.loc[0, "Imágenes"] == 3
