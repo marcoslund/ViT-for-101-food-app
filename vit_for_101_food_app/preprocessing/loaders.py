@@ -60,8 +60,7 @@ class Food101Dataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict:
         ruta = self._root / f"{self._rels[idx]}{self._suffix}"
-        # convert("RGB") incondicional: grayscale, CMYK y paleta rompen un modelo
-        # que asume 3 canales (hallazgo #7, seccion 3 del EDA).
+        # convert("RGB") incondicionalmente
         with Image.open(ruta) as im:
             imagen = im.convert("RGB")
         return {"pixel_values": self._transform(imagen), "labels": self._labels[idx]}
