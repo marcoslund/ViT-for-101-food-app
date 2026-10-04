@@ -21,12 +21,15 @@ distintos compromisos entre capacidad y eficiencia**. Se evalúan arquitecturas 
 dispositivos con recursos limitados (p. ej. MobileViT) y se usa un **ViT estándar como referencia de
 mayor capacidad**.
 
-| Rol | Modelo | Resolución nativa |
-|---|---|---|
-| **Candidato liviano** | MobileViT | 256×256 |
-| **Referencia** | ViT (baseline) | 224×224 |
+| Rol | Modelo | Checkpoint | Parámetros | Resolución nativa |
+|---|---|---|---|---|
+| **Candidato liviano** | MobileViT-S | `apple/mobilevit-small` | 5,0 M | 256×256 |
+| Liviano, transformer puro | DeiT-Ti | `facebook/deit-tiny-patch16-224` | 5,5 M | 224×224 |
+| Intermedio | Swin-T | `microsoft/swin-tiny-patch4-window7-224` | 27,6 M | 224×224 |
+| **Referencia** | ViT-B/16 | `google/vit-base-patch16-224-in21k` | 85,9 M | 224×224 |
 
-(El registry `config.MODELS` admite sumar más arquitecturas —Swin, DeiT, etc.— sin tocar el pipeline.)
+Las cuatro viven en el registry `config.MODELS`; sumar una arquitectura es agregar una línea ahí, no
+tocar el pipeline.
 
 La comparación busca responder dos preguntas:
 
@@ -35,8 +38,10 @@ La comparación busca responder dos preguntas:
 2. ¿En qué clases se concentra esa diferencia: es pareja entre las 101 categorías o se acumula en los
    platos visualmente más difíciles de distinguir?
 
-Si la brecha entre una arquitectura liviana y la referencia es plana a lo largo del ranking de
-dificultad de las clases, la arquitectura liviana es la elección correcta para el dispositivo.
+La hipótesis de partida, formulada en el EDA antes de entrenar, era que la capacidad extra de la
+referencia debería notarse sobre todo en las clases visualmente más confundibles, y que una brecha
+plana a lo largo del ranking de dificultad favorecería a la arquitectura liviana. Cómo resultó, en
+[Resultados](#resultados).
 
 ### Alcance
 
@@ -69,6 +74,39 @@ sin modificar: cualquier split propio haría los resultados incomparables con la
 - [x] **Variaciones de receta** (learning rate y tope de épocas) — [`notebooks/3.5`](notebooks/3.5-swin-30ep.ipynb) a [`3.8`](notebooks/3.8-mobilevit-lr5e-5-30ep.ipynb)
 - [x] **Análisis integral y contraste de la hipótesis** — [`notebooks/4.0-comparativa.ipynb`](notebooks/4.0-comparativa.ipynb)
 
+## Resultados
+
+Ocho corridas: las cuatro arquitecturas con una receta común (lr 5e-4, 20 épocas) y cuatro
+variaciones de learning rate y tope de épocas. El análisis integral elige, por F1 de validación, la
+receta de cada arquitectura y compara con esas cuatro corridas sobre las 25.250 imágenes del test.
+Los números salen de [`reports/results/comparativa/hallazgos.json`](reports/results/comparativa/hallazgos.json).
+
+| Modelo | Receta elegida | F1 macro (test) | Parámetros | Latencia CPU int8 |
+|---|---|---|---|---|
+| ViT-B/16 | lr 5e-5 · 20 ép. | **0,884** | 85,9 M | 190 ms |
+| MobileViT-S | lr 5e-4 · 20 ép. | 0,861 | 5,0 M | 75 ms |
+| Swin-T | lr 5e-4 · 20 ép. | 0,855 | 27,6 M | 89 ms |
+| DeiT-Ti | lr 5e-4 · 20 ép. | 0,777 | 5,5 M | 19 ms |
+
+- **La receta pesa tanto como la arquitectura, con signo distinto según el tamaño.** Bajar el
+  learning rate de 5e-4 a 5e-5 le suma 6,0 puntos de accuracy a ViT-B/16 y le resta 3,9 a
+  MobileViT-S; darle 30 épocas a Swin-T no cambia nada. Por eso cada arquitectura entra con su propia
+  receta, y comparar a receta fija hubiera favorecido a los modelos chicos.
+- **La referencia es la mejor, y el candidato liviano pierde poco.** MobileViT-S queda 2,3 puntos de
+  accuracy por debajo de ViT-B/16 (IC 95 % de 1,9 a 2,7) y conserva el 97 % de su F1 con 17 veces
+  menos parámetros, 9 veces menos GFLOPs y el 39 % de su latencia en CPU int8. Son los dos únicos
+  modelos en el frente de Pareto de los tres ejes de costo.
+- **La brecha es pareja entre clases fáciles y difíciles.** MobileViT-S queda entre 1,9 y 2,6 puntos
+  por debajo en los tres terciles de dificultad del EDA, sin tendencia con la dificultad. La hipótesis
+  de que la capacidad extra se notaría sobre todo en las clases confundibles no se confirma. DeiT-Ti,
+  en cambio, sí pierde más en las difíciles (de 7,5 a 12,9 puntos).
+- **Hay un núcleo de errores que no depende del modelo.** Steak ↔ filet mignon, chocolate cake ↔
+  chocolate mousse y los dos tartares son las confusiones dominantes en las cuatro arquitecturas; el
+  4,5 % del test lo fallan las cuatro.
+
+Limitaciones: una semilla por corrida, barrido de recetas incompleto (DeiT-Ti no se probó con lr 5e-5,
+Swin-T no probó otro learning rate) y latencias medidas en la CPU de una notebook, no en un teléfono.
+
 ## EDA
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marcoslund/ViT-for-101-food-app/blob/main/notebooks/1.0-eda-food101.ipynb)
@@ -79,8 +117,8 @@ diseño del benchmark.
 | Sección | Pregunta | Decisión que habilita |
 |---|---|---|
 | 1. Estructura y splits | ¿Está balanceado? | Elección de métrica (top-1 vs macro-F1) |
-| 2. Geometría | ¿Cuánta imagen se pierde al recortar a 224 / 256? | Política de preprocesamiento por modelo |
-| 3. Integridad | ¿Hay imágenes rotas o en modos raros? | Lista de exclusión del dataloader |
+| 2. Geometría | ¿Cuánta imagen se pierde con el recorte de cada modelo? | Política de preprocesamiento por modelo, leída del checkpoint |
+| 3. Integridad | ¿Hay imágenes rotas o en modos raros? | Lista de exclusión del dataloader (quedó vacía) |
 | 4. Ruido y duplicados | ¿Hay mislabels o fuga train↔test? | Validez del set de evaluación |
 | 5. Confusión entre clases | ¿Dónde está la dificultad real? | Hipótesis sobre en qué clases la mayor capacidad debería marcar diferencia |
 | 6. Subset de benchmark | ¿Sobre qué imágenes exactas evaluamos? | Manifiesto reproducible y acotado en costo |
@@ -156,9 +194,9 @@ las corridas 3.x antes de entrenar. Corre con el dataset completo (~4.7 GB) en C
 Cada modelo consume su propio `AutoImageProcessor` de HuggingFace, leído en runtime por
 `preprocessing.processors.spec_for`. `preprocessing.policies.build_transform` reconstruye esa misma
 geometría operando sobre tensores — necesario para poder aplicar augmentation con
-`torchvision.transforms.v2` — y `make verify` comprueba que ambos coinciden. En la corrida de
-verificación local la diferencia máxima medida fue `1.19e-07` para ViT y `0.0` para MobileViT
-(orden del épsilon de `float32`, no una aproximación visual).
+`torchvision.transforms.v2` — y `make verify` comprueba que ambos coinciden. En la corrida de Colab
+del notebook 2 la diferencia máxima medida fue `1.2e-07` para ViT y DeiT, `4.8e-07` para Swin y `0.0`
+para MobileViT (orden del épsilon de `float32`, no una aproximación visual).
 
 Según sus processors, ViT-B/16, Swin-T y DeiT-Ti hacen un **resize cuadrado directo** a 224×224
 sin recorte y normalizan en RGB (ViT y DeiT con 0,5; Swin con las constantes de ImageNet).
@@ -205,7 +243,7 @@ arquitectura al benchmark es agregar una línea al registry, no escribir un pipe
 
 | Módulo | Responsabilidad |
 |---|---|
-| `training.py` | Construcción del modelo, `TrainingRecipe` (idéntica para todos), `Trainer` de HuggingFace y `resolve_batch_plan` (batch/acumulación/checkpointing según resolución y GPU) |
+| `training.py` | Construcción del modelo, `TrainingRecipe` (misma estructura para todos; el learning rate y el tope de épocas se variaron a propósito en los notebooks 3.5 a 3.8), `Trainer` de HuggingFace y `resolve_batch_plan` (batch/acumulación/checkpointing según resolución y GPU) |
 | `evaluation.py` | Predicciones por imagen, métricas por tercil, reporte por clase, confusiones, FLOPs, tamaño de los pesos (fp32/fp16/int8) y latencia en GPU/CPU —incluida la medición del lado del dispositivo con el modelo **cuantizado a int8** en CPU—, **el mismo código para todos los modelos** |
 | `benchmark.py` | Orquestación: verifica artefactos, entrena, evalúa y escribe `metrics.json` + CSV |
 
@@ -303,7 +341,7 @@ Generada con [cookiecutter-data-science](https://cookiecutter-data-science.drive
 │
 ├── docs               <- Documentación del proyecto
 │
-├── models             <- Modelos entrenados y serializados, predicciones, métricas
+├── models             <- Checkpoints de las corridas (no versionados)
 │
 ├── notebooks          <- Notebooks. Convención: número de orden + descripción,
 │                         p. ej. `1.0-eda-food101.ipynb`, `2.0-preprocessing.ipynb`
@@ -312,10 +350,11 @@ Generada con [cookiecutter-data-science](https://cookiecutter-data-science.drive
 │
 ├── references         <- Diccionarios de datos, manuales, material explicativo
 │
-├── reports            <- Análisis generado (HTML, PDF, LaTeX)
-│   └── figures        <- Gráficos para los informes
+├── reports
+│   ├── figures        <- Gráficos para los informes
+│   └── results        <- Por corrida: metrics.json, predicciones, curvas; y comparativa/ con el análisis integral
 │
-├── tests              <- Tests de integridad de los artefactos del EDA y del preprocesamiento
+├── tests              <- Tests del preprocesamiento, la evaluación, la comparación y el tracking
 │
 └── vit_for_101_food_app   <- Código fuente del proyecto
     ├── config.py               <- Rutas, semilla y resoluciones de los modelos
@@ -325,9 +364,12 @@ Generada con [cookiecutter-data-science](https://cookiecutter-data-science.drive
     │   ├── training.py         <- Modelo, receta y Trainer, genéricos sobre model_key
     │   ├── evaluation.py       <- Protocolo de evaluación común (predicciones, terciles, FLOPs, latencia)
     │   ├── benchmark.py        <- Orquestación: une preprocessing + training + evaluation
+    │   ├── comparison.py       <- Análisis integral: tablas, contrastes pareados y figuras del notebook 4
+    │   ├── examples.py         <- Imágenes del dataset para ilustrar los resultados
     │   ├── train.py            <- CLI headless: corre el benchmark completo de un modelo
     │   └── predict.py          <- CLI de inferencia sobre un modelo ya entrenado
-    ├── plots.py                <- Visualizaciones
+    ├── plots.py                <- Curvas de entrenamiento y estilo de las figuras
+    ├── tracking.py             <- Registro de las corridas en MLflow a partir de reports/results
     └── preprocessing
         ├── raw.py              <- Índice canónico de Food-101 y descarga
         ├── splits.py           <- Split de validación y mapa de etiquetas
