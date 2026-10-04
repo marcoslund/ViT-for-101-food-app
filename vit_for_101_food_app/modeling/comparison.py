@@ -106,7 +106,6 @@ COLUMN_LABELS = {
     "ic_alto": "IC 95 % superior",
     "solo_a": "Acierta solo el modelo",
     "solo_b": "Acierta solo la referencia",
-    "p_mcnemar": "p (McNemar)",
     "tercil": "Tercil",
     "modelo": "Modelo",
     # por clase
@@ -192,8 +191,6 @@ def present_paired(table: pd.DataFrame) -> pd.DataFrame:
     for col in ("n", "solo_a", "solo_b"):
         if col in out:
             out[col] = out[col].astype(int)
-    if "p_mcnemar" in out:
-        out["p_mcnemar"] = out["p_mcnemar"].map(lambda p: "< 0.001" if p < 0.001 else f"{p:.3f}")
     etiquetas = {
         "acc_a": "Accuracy de A (%)",
         "acc_b": "Accuracy de B (%)",
@@ -343,12 +340,12 @@ def summary_table(metrics: dict[str, dict]) -> pd.DataFrame:
 
 
 def paired_difference(correct_a, correct_b, alpha: float = 0.05) -> dict:
-    """Diferencia de accuracy ``a - b`` sobre las mismas imágenes, con IC y McNemar.
+    """Diferencia de accuracy ``a - b`` sobre las mismas imágenes, con su IC del 95 %.
 
     Como los dos modelos se evalúan sobre las mismas imágenes, lo que informa es en
     cuántas acierta uno y el otro no (``solo_a``, ``solo_b``); las que aciertan o
-    fallan los dos no aportan. El IC es el de Wald para proporciones pareadas y el
-    p-valor, el de McNemar exacto (binomial sobre los pares discordantes).
+    fallan los dos no aportan. El IC es el de Wald para proporciones pareadas: si no
+    incluye al cero, la diferencia no se explica por la muestra de imágenes.
     """
     a = np.asarray(correct_a, dtype=bool)
     b = np.asarray(correct_b, dtype=bool)
@@ -360,8 +357,6 @@ def paired_difference(correct_a, correct_b, alpha: float = 0.05) -> dict:
     diff = (solo_a - solo_b) / n
     se = math.sqrt(max(solo_a + solo_b - (solo_a - solo_b) ** 2 / n, 0.0)) / n
     z = stats.norm.ppf(1 - alpha / 2)
-    discordantes = solo_a + solo_b
-    p = stats.binomtest(solo_a, discordantes).pvalue if discordantes else 1.0
     return {
         "n": n,
         "acc_a": float(a.mean()),
@@ -371,7 +366,6 @@ def paired_difference(correct_a, correct_b, alpha: float = 0.05) -> dict:
         "ic_alto": diff + z * se,
         "solo_a": solo_a,
         "solo_b": solo_b,
-        "p_mcnemar": float(p),
     }
 
 

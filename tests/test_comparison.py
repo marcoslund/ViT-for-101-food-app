@@ -142,13 +142,13 @@ def test_paired_difference_cuenta_solo_los_discordantes():
     assert (res["solo_a"], res["solo_b"]) == (2, 1)
     assert res["diff"] == pytest.approx(0.2)
     assert res["ic_bajo"] < res["diff"] < res["ic_alto"]
-    # McNemar exacto: binomial(2 de 3, p=0.5) a dos colas
-    assert res["p_mcnemar"] == pytest.approx(1.0)
+    # Solo la diferencia y su intervalo: ningun p-valor que leer.
+    assert "p_mcnemar" not in res
 
 
-def test_paired_difference_sin_discordantes_no_es_significativa():
+def test_paired_difference_sin_discordantes_da_diferencia_cero():
     res = comparison.paired_difference([True, False], [True, False])
-    assert res["diff"] == 0 and res["p_mcnemar"] == 1.0
+    assert res["diff"] == 0
     assert res["ic_bajo"] == res["ic_alto"] == 0
 
 
@@ -240,7 +240,7 @@ def test_present_paired_pasa_a_puntos_y_nombra_a_y_b():
     out = comparison.present_paired(tabla)
     assert out.loc[0, "Diferencia A − B (puntos)"] == pytest.approx(100 / 3)
     assert out.loc[0, "Acierta solo A"] == 1 and out.loc[0, "Acierta solo B"] == 0
-    assert out.loc[0, "p (McNemar)"] == "1.000"
+    assert "p (McNemar)" not in out.columns
     assert out.loc[0, "Imágenes"] == 3
 
 
