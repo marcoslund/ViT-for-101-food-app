@@ -1,0 +1,5 @@
+,corrida_elegida,f1_mejor_receta,f1_receta_fija,ranking_mejor_receta,ranking_receta_fija
+mobilevit,lr 5e-4 · 20 ép.,0.860850341383655,0.860850341383655,2,1
+vit,lr 5e-5 · 20 ép.,0.8838250153427494,0.823349697049524,1,3
+swin,lr 5e-4 · 20 ép.,0.8546618100122153,0.8546618100122153,3,2
+deit,lr 5e-4 · 20 ép.,0.7765105297330394,0.7765105297330394,4,4

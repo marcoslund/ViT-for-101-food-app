@@ -50,7 +50,7 @@ SEED = 42
 # (ImageNet-1k) entrenada; usarlo para 101 clases requiere from_pretrained(...,
 # ignore_mismatched_sizes=True) para descartar esa cabeza en vez de reusarla, porque
 # el shape 1000 no coincide con 101. Confundir los dos checkpoints en el codigo de
-# entrenamiento (Fine-tuning de ViT, todavia sin hacer) es la forma de que esa llamada
+# entrenamiento (modeling/training.py) es la forma de que esa llamada
 # falle por shape mismatch o, peor, cargue pesos de clasificacion que no aplican.
 MODELS = {
     "vit": "google/vit-base-patch16-224-in21k",

@@ -65,9 +65,9 @@ sin modificar: cualquier split propio haría los resultados incomparables con la
 
 - [x] **EDA** — [`notebooks/1.0-eda-food101.ipynb`](notebooks/1.0-eda-food101.ipynb)
 - [x] **Preprocesamiento** — [`notebooks/2.0-preprocessing.ipynb`](notebooks/2.0-preprocessing.ipynb)
-- [ ] Fine-tuning de MobileViT (candidato liviano)
-- [ ] Fine-tuning y evaluación del ViT baseline (referencia de mayor capacidad)
-- [ ] Tabla comparativa y contraste de la hipótesis
+- [x] **Fine-tuning y evaluación** de las cuatro arquitecturas — [`notebooks/3.1`](notebooks/3.1-mobilevit.ipynb) a [`3.4`](notebooks/3.4-vit.ipynb)
+- [x] **Variaciones de receta** (learning rate y tope de épocas) — [`notebooks/3.5`](notebooks/3.5-swin-30ep.ipynb) a [`3.8`](notebooks/3.8-mobilevit-lr5e-5-30ep.ipynb)
+- [x] **Análisis integral y contraste de la hipótesis** — [`notebooks/4.0-comparativa.ipynb`](notebooks/4.0-comparativa.ipynb)
 
 ## EDA
 
@@ -213,9 +213,12 @@ arquitectura al benchmark es agregar una línea al registry, no escribir un pipe
 
 Hay **dos formas de correr el mismo pipeline**, que miden exactamente lo mismo:
 
-- **Notebooks** (`notebooks/3.1-mobilevit.ipynb`, `3.2-swin.ipynb`, `3.3-deit.ipynb`) —
-  celda por celda, con salidas visibles para el informe. Los tres son idénticos salvo
-  `MODEL_KEY`; están pensados para Colab (secciones 0.2 y 0.3 arman el entorno y los datos).
+- **Notebooks** (`notebooks/3.1-mobilevit.ipynb`, `3.2-swin.ipynb`, `3.3-deit.ipynb`,
+  `3.4-vit.ipynb`) — celda por celda, con salidas visibles para el informe. Los cuatro son
+  idénticos salvo `MODEL_KEY`; están pensados para Colab (secciones 0.2 y 0.3 arman el
+  entorno y los datos). Los notebooks `3.5` a `3.8` repiten tres de esas corridas variando
+  la receta (lr 5e-5 para MobileViT y ViT, tope de 30 épocas para Swin y MobileViT) y
+  escriben en `reports/results/<model>-<variante>/`.
 - **CLI headless** — para una corrida desatendida (Kaggle, VM):
 
   ```bash
@@ -236,6 +239,24 @@ TensorBoard. Para comparar los modelos en MLflow, a partir de `reports/results/`
 python -m vit_for_101_food_app.tracking
 mlflow ui --backend-store-uri sqlite:///mlflow.db
 ```
+
+### Análisis integral
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marcoslund/ViT-for-101-food-app/blob/main/notebooks/4.0-comparativa.ipynb)
+
+[`notebooks/4.0-comparativa.ipynb`](notebooks/4.0-comparativa.ipynb) junta las ocho corridas
+de `reports/results/` y no entrena nada. Primero mide el efecto de cada cambio de receta
+dentro de cada arquitectura (contrastes pareados sobre las mismas 25.250 imágenes de test) y
+elige, por F1 de validación, la corrida que representa a cada una. Con esas cuatro compara
+desempeño frente a costo, brecha por tercil de dificultad del EDA y por clase, confusiones
+compartidas y ejemplos del dataset; la lente de receta fija (las cuatro corridas originales)
+queda a la vista para mostrar cuánto depende el ranking de la receta.
+
+Escribe tablas en `reports/results/comparativa/*.csv`, los números clave en
+`reports/results/comparativa/hallazgos.json` y figuras en `reports/figures/comparativa-*`.
+La lógica vive en `modeling/comparison.py` y `modeling/examples.py`, con tests. Corre con las
+dependencias base (sin GPU ni el extra `deep`); solo la sección de ejemplos necesita el
+`food-101.tar.gz` en `data/raw/`, del que extrae las ~60 imágenes que muestra.
 
 ## Setup local
 

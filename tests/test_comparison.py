@@ -28,6 +28,7 @@ def _metrics(model_key, f1, params, **receta):
         "checkpoint": f"org/{model_key}",
         "receta": {**RECETA, **receta},
         "tiempo_entrenamiento_s": 3600.0,
+        "best_val_f1_macro": f1 - 0.05,
         "test": {"n": 6, "accuracy": f1, "top5_accuracy": 1.0, "f1_macro": f1},
         "costo": {
             "params_m": params,
@@ -241,3 +242,112 @@ def test_present_paired_pasa_a_puntos_y_nombra_a_y_b():
     assert out.loc[0, "Acierta solo A"] == 1 and out.loc[0, "Acierta solo B"] == 0
     assert out.loc[0, "p (McNemar)"] == "1.000"
     assert out.loc[0, "Imágenes"] == 3
+
+
+# --------------------------------------------------------------------------------------
+# Varias recetas por arquitectura
+# --------------------------------------------------------------------------------------
+
+
+def _historia(f1s):
+    filas = [
+        {"epoch": i + 1, "split": "val", "eval_f1_macro": f, "eval_loss": 1 - f}
+        for i, f in enumerate(f1s)
+    ]
+    return pd.DataFrame(filas)
+
+
+@pytest.fixture
+def results_recetas(results_dir):
+    """``results_dir`` mas una segunda corrida de vit con otro learning rate."""
+    d = results_dir / "vit-lr5e-5"
+    d.mkdir()
+    (d / "metrics.json").write_text(
+        json.dumps(_metrics("vit", 0.8, 86.0, learning_rate=5e-5, epochs_entrenadas=8.0))
+    )
+    base = pd.read_csv(results_dir / "mobilevit" / "predictions_test.csv")
+    base.to_csv(d / "predictions_test.csv", index=False)
+    pd.read_csv(results_dir / "mobilevit" / "confusiones_test.csv").to_csv(
+        d / "confusiones_test.csv", index=False
+    )
+    pd.read_csv(results_dir / "mobilevit" / "report_por_clase_test.csv", index_col=0).to_csv(
+        d / "report_por_clase_test.csv"
+    )
+    _historia([0.5, 0.6]).to_csv(results_dir / "vit" / "training_history.csv", index=False)
+    _historia([0.7, 0.8, 0.75]).to_csv(d / "training_history.csv", index=False)
+    _historia([0.6, 0.7]).to_csv(results_dir / "mobilevit" / "training_history.csv", index=False)
+    return results_dir
+
+
+def test_load_metrics_acepta_un_dict_clave_a_directorio(results_recetas):
+    metrics = comparison.load_metrics(
+        {"vit": "vit-lr5e-5", "mobilevit": "mobilevit"}, results_recetas
+    )
+    assert list(metrics) == ["vit", "mobilevit"]
+    assert metrics["vit"]["receta"]["learning_rate"] == 5e-5
+
+
+def test_load_predictions_acepta_un_dict_clave_a_directorio(results_recetas):
+    preds = comparison.load_predictions(
+        {"vit": "vit-lr5e-5", "mobilevit": "mobilevit"}, results_recetas
+    )
+    assert {"vit", "pred_vit", "mobilevit", "pred_mobilevit"} <= set(preds.columns)
+    # vit-lr5e-5 copia las predicciones de mobilevit: acierta lo mismo.
+    assert preds["vit"].tolist() == preds["mobilevit"].tolist()
+
+
+def test_funciones_que_leen_de_disco_aceptan_un_dict(results_recetas, difficulty):
+    corridas = {"vit": "vit-lr5e-5", "mobilevit": "mobilevit"}
+    por_clase = comparison.per_class_gap(corridas, difficulty, "vit", results_recetas)
+    assert (por_clase["gap_mobilevit"] == 0).all()
+    confusiones = comparison.confusion_pairs(corridas, results_dir=results_recetas)
+    assert (confusiones["vit"] == confusiones["mobilevit"]).all()
+    historias = comparison.load_histories(corridas, results_recetas)
+    assert len(historias["vit"]) == 3
+
+
+def test_check_comparable_permite_que_varien_los_factores_de_diseno(results_recetas):
+    metrics = comparison.load_metrics(["vit", "vit-lr5e-5", "mobilevit"], results_recetas)
+    tabla = comparison.check_comparable(metrics, design=("learning_rate",))
+    assert tabla.loc["learning_rate", "vit-lr5e-5"] == 5e-5
+    metrics["mobilevit"]["receta"]["seed"] = 7
+    with pytest.raises(ValueError, match="seed"):
+        comparison.check_comparable(metrics, design=("learning_rate",))
+
+
+def test_run_table_una_fila_por_corrida_con_su_arquitectura_y_receta(results_recetas):
+    metrics = comparison.load_metrics(["vit", "vit-lr5e-5", "mobilevit"], results_recetas)
+    tabla = comparison.run_table(metrics)
+    assert tabla.loc["vit-lr5e-5", "arquitectura"] == "vit"
+    assert tabla.loc["vit-lr5e-5", "learning_rate"] == 5e-5
+    assert tabla.loc["vit-lr5e-5", "epochs_entrenadas"] == 8.0
+    assert tabla.loc["vit-lr5e-5", "mejor_val_f1"] == pytest.approx(0.75)
+    assert tabla.loc["vit-lr5e-5", "f1_macro"] == pytest.approx(0.8)
+
+
+def test_fmt_lr_sin_ceros_en_el_exponente():
+    assert comparison.fmt_lr(5e-5) == "5e-5"
+    assert comparison.fmt_lr(5e-4) == "5e-4"
+    assert comparison.fmt_lr(1e-4) == "1e-4"
+
+
+def test_run_label_nombra_arquitectura_y_receta(results_recetas):
+    metrics = comparison.load_metrics(["vit", "vit-lr5e-5"], results_recetas)
+    assert comparison.run_label("vit-lr5e-5", metrics) == "ViT-B/16 · lr 5e-5 · 20 ép."
+    assert comparison.run_label("vit", metrics) == "ViT-B/16 · lr 5e-4 · 20 ép."
+
+
+def test_best_runs_elige_por_f1_de_validacion_dentro_de_cada_arquitectura(results_recetas):
+    metrics = comparison.load_metrics(["vit", "vit-lr5e-5", "mobilevit"], results_recetas)
+    assert comparison.best_runs(metrics) == {"vit": "vit-lr5e-5", "mobilevit": "mobilevit"}
+
+
+def test_plot_recipe_curves_un_panel_por_arquitectura(results_recetas):
+    corridas = ["vit", "vit-lr5e-5", "mobilevit"]
+    metrics = comparison.load_metrics(corridas, results_recetas)
+    historias = comparison.load_histories(corridas, results_recetas)
+    fig = comparison.plot_recipe_curves(historias, metrics)
+    ejes = [ax for ax in fig.axes if ax.get_title(loc="left")]
+    assert len(ejes) == 2
+    lineas_por_eje = sorted(len(ax.get_lines()) for ax in ejes)
+    assert lineas_por_eje == [1, 2]
