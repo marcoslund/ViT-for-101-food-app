@@ -8,7 +8,13 @@ usa el informe:
   - diferencias pareadas entre modelos (``paired_difference``, ``differences_vs``);
   - rendimiento según la dificultad de la clase (``gap_by_tercil``, ``per_class_gap``,
     ``flatness``);
-  - confusiones compartidas (``confusion_pairs``) y convergencia (``convergence``).
+  - confusiones compartidas (``confusion_pairs``) y convergencia (``convergence``);
+  - varias recetas por arquitectura (``run_table``, ``best_runs``, ``plot_recipe_curves``).
+
+Las funciones que leen de disco reciben los modelos como lista (la clave es el nombre del
+directorio en ``reports/results``) o como dict ``clave -> directorio``, para comparar con
+las claves de arquitectura de siempre corridas que viven en otro directorio (por ejemplo
+``{"vit": "vit-lr5e-5"}``).
 
 No importa torch: corre con las dependencias base del proyecto.
 
@@ -77,6 +83,8 @@ COLUMN_LABELS = {
     "epochs_entrenadas": "Épocas entrenadas",
     "horas_entrenamiento": "Horas de entrenamiento",
     # receta
+    "arquitectura": "Arquitectura",
+    "corrida": "Corrida",
     "epochs": "Épocas (tope)",
     "learning_rate": "Learning rate",
     "weight_decay": "Weight decay",
@@ -203,6 +211,13 @@ def present_paired(table: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------------------
 
 
+def _dirs(models) -> dict[str, str]:
+    """``models`` como lista (clave == directorio) o como dict ``clave -> directorio``."""
+    if isinstance(models, dict):
+        return dict(models)
+    return {m: m for m in models}
+
+
 def available_models(results_dir: Path = RESULTS_DIR) -> list[str]:
     """Modelos con ``metrics.json``, en el orden de ``MODEL_COLORS`` y después alfabético."""
     encontrados = {p.parent.name for p in Path(results_dir).glob("*/metrics.json")}
@@ -210,15 +225,19 @@ def available_models(results_dir: Path = RESULTS_DIR) -> list[str]:
     return orden + sorted(encontrados - set(orden))
 
 
-def load_metrics(models: list[str], results_dir: Path = RESULTS_DIR) -> dict[str, dict]:
+def load_metrics(models, results_dir: Path = RESULTS_DIR) -> dict[str, dict]:
     return {
-        m: json.loads((Path(results_dir) / m / "metrics.json").read_text(encoding="utf-8"))
-        for m in models
+        m: json.loads((Path(results_dir) / d / "metrics.json").read_text(encoding="utf-8"))
+        for m, d in _dirs(models).items()
     }
 
 
-def check_comparable(metrics: dict[str, dict]) -> pd.DataFrame:
+def check_comparable(metrics: dict[str, dict], design: tuple[str, ...] = ()) -> pd.DataFrame:
     """Receta y entorno de cada corrida, lado a lado. Error si la receta difiere.
+
+    ``design`` son los campos de la receta que se variaron a propósito (por ejemplo
+    ``("learning_rate", "epochs")``): se muestran pero no cortan. Todo lo demás tiene que
+    coincidir para que las diferencias sean entre arquitecturas o entre esos factores.
 
     El entorno (GPU, versiones) no corta: se devuelve para que quede a la vista, porque
     las latencias solo son comparables si se midieron en la misma máquina.
@@ -237,14 +256,14 @@ def check_comparable(metrics: dict[str, dict]) -> pd.DataFrame:
     distintas = [
         k
         for k in (*RECIPE_KEYS, "batch_efectivo", "n_test")
-        if tabla.loc[k].astype(str).nunique() > 1
+        if k not in design and tabla.loc[k].astype(str).nunique() > 1
     ]
     if distintas:
         raise ValueError(f"las corridas no usan la misma receta: difieren en {distintas}")
     return tabla
 
 
-def load_predictions(models: list[str], results_dir: Path = RESULTS_DIR) -> pd.DataFrame:
+def load_predictions(models, results_dir: Path = RESULTS_DIR) -> pd.DataFrame:
     """Predicciones por imagen de todos los modelos en una sola tabla.
 
     Una fila por imagen: la columna ``<modelo>`` dice si acertó y ``pred_<modelo>``, qué
@@ -252,8 +271,9 @@ def load_predictions(models: list[str], results_dir: Path = RESULTS_DIR) -> pd.D
     la comparación pareada (``paired_difference``) necesita el mismo conjunto.
     """
     base = None
-    for m in models:
-        p = pd.read_csv(Path(results_dir) / m / "predictions_test.csv")
+    dirs = _dirs(models)
+    for m, d in dirs.items():
+        p = pd.read_csv(Path(results_dir) / d / "predictions_test.csv")
         p = p[["rel", "class_dir", "correct", "pred_class"]].rename(
             columns={"correct": m, "pred_class": f"pred_{m}"}
         )
@@ -261,7 +281,7 @@ def load_predictions(models: list[str], results_dir: Path = RESULTS_DIR) -> pd.D
             base = p
             continue
         if set(p["rel"]) != set(base["rel"]):
-            raise ValueError(f"{m} no predijo las mismas imágenes que {models[0]}")
+            raise ValueError(f"{m} no predijo las mismas imágenes que {next(iter(dirs))}")
         base = base.merge(p.drop(columns="class_dir"), on="rel", validate="1:1")
     return base
 
@@ -283,11 +303,11 @@ def load_benchmark_subset(
     return pd.read_csv(subset_path)
 
 
-def load_histories(models: list[str], results_dir: Path = RESULTS_DIR) -> dict[str, pd.DataFrame]:
+def load_histories(models, results_dir: Path = RESULTS_DIR) -> dict[str, pd.DataFrame]:
     """Filas de validación de ``training_history.csv`` (una por época)."""
     out = {}
-    for m in models:
-        h = pd.read_csv(Path(results_dir) / m / "training_history.csv")
+    for m, d in _dirs(models).items():
+        h = pd.read_csv(Path(results_dir) / d / "training_history.csv")
         out[m] = h[h["split"] == "val"].reset_index(drop=True)
     return out
 
@@ -405,18 +425,20 @@ def gap_by_tercil(
 
 
 def per_class_gap(
-    models: list[str],
+    models,
     difficulty: pd.DataFrame,
     reference: str = REFERENCE,
     results_dir: Path = RESULTS_DIR,
 ) -> pd.DataFrame:
     """F1 por clase de cada modelo y su brecha contra ``reference``, con la dificultad."""
+    dirs = _dirs(models)
+    models = list(dirs)
     f1 = pd.DataFrame(
         {
-            m: pd.read_csv(Path(results_dir) / m / "report_por_clase_test.csv", index_col=0)[
+            m: pd.read_csv(Path(results_dir) / d / "report_por_clase_test.csv", index_col=0)[
                 "f1-score"
             ]
-            for m in models
+            for m, d in dirs.items()
         }
     )
     f1 = f1.loc[f1.index.isin(difficulty.index)]
@@ -450,17 +472,17 @@ def flatness(per_class: pd.DataFrame, model: str) -> dict:
     }
 
 
-def confusion_pairs(
-    models: list[str], top: int = 12, results_dir: Path = RESULTS_DIR
-) -> pd.DataFrame:
+def confusion_pairs(models, top: int = 12, results_dir: Path = RESULTS_DIR) -> pd.DataFrame:
     """Pares (clase real → clase predicha) más frecuentes, con el conteo de cada modelo.
 
     Se ordenan por el total sobre todos los modelos: arriba quedan las confusiones que
     comparten las arquitecturas, que hablan más del dataset que de un modelo.
     """
     tabla = None
-    for m in models:
-        c = pd.read_csv(Path(results_dir) / m / "confusiones_test.csv").rename(
+    dirs = _dirs(models)
+    models = list(dirs)
+    for m, d in dirs.items():
+        c = pd.read_csv(Path(results_dir) / d / "confusiones_test.csv").rename(
             columns={"class_dir": "clase_real", "pred_class": "clase_predicha", "n": m}
         )
         tabla = (
@@ -518,6 +540,97 @@ def convergence(histories: dict[str, pd.DataFrame], ultimas: int = 3) -> pd.Data
             "val_loss_final": float(loss[-1]),
         }
     return pd.DataFrame(filas).T.infer_objects()
+
+
+# --------------------------------------------------------------------------------------
+# Varias recetas por arquitectura
+# --------------------------------------------------------------------------------------
+
+
+def _fmt_lr(lr: float) -> str:
+    """``5e-05`` → ``5e-5``: notación científica sin ceros en el exponente."""
+    mantisa, exponente = f"{lr:.0e}".split("e")
+    return f"{mantisa}e{int(exponente)}"
+
+
+def run_table(metrics: dict[str, dict]) -> pd.DataFrame:
+    """Una fila por corrida: arquitectura, factores de la receta y resultado."""
+    filas = {}
+    for run, d in metrics.items():
+        receta = d["receta"]
+        filas[run] = {
+            "arquitectura": d["model_key"],
+            "checkpoint": d["checkpoint"],
+            "learning_rate": receta["learning_rate"],
+            "epochs": receta["epochs"],
+            "epochs_entrenadas": receta.get("epochs_entrenadas"),
+            "mejor_val_f1": d["best_val_f1_macro"],
+            "accuracy": d["test"]["accuracy"],
+            "f1_macro": d["test"]["f1_macro"],
+            "horas_entrenamiento": d["tiempo_entrenamiento_s"] / 3600,
+        }
+    return pd.DataFrame(filas).T.infer_objects()
+
+
+def run_label(run: str, metrics: dict[str, dict]) -> str:
+    """Nombre legible de una corrida: arquitectura, learning rate y tope de épocas."""
+    d = metrics[run]
+    receta = d["receta"]
+    return f"{model_name(d['model_key'])} · lr {_fmt_lr(receta['learning_rate'])} · {receta['epochs']} ép."
+
+
+def best_runs(metrics: dict[str, dict], by: str = "best_val_f1_macro") -> dict[str, str]:
+    """La mejor corrida de cada arquitectura según ``by`` (por defecto, el F1 de validación).
+
+    Elegir por validación y no por test es lo que permite seguir leyendo el test como una
+    estimación honesta: el test no participó de la elección.
+    """
+    mejores: dict[str, str] = {}
+    for run, d in metrics.items():
+        arq = d["model_key"]
+        if arq not in mejores or d[by] > metrics[mejores[arq]][by]:
+            mejores[arq] = run
+    return mejores
+
+
+def plot_recipe_curves(histories: dict[str, pd.DataFrame], metrics: dict[str, dict]) -> plt.Figure:
+    """F1 de validación por época, un panel por arquitectura y una línea por receta."""
+    arquitecturas = list(dict.fromkeys(metrics[r]["model_key"] for r in histories))
+    arquitecturas.sort(key=lambda a: (list(MODEL_COLORS).index(a) if a in MODEL_COLORS else 99, a))
+    estilos = ("-", "--", ":", "-.")
+    fig, axes = plt.subplots(
+        1, len(arquitecturas), figsize=(4.2 * len(arquitecturas), 4), sharey=True
+    )
+    axes = np.atleast_1d(axes)
+    fig.patch.set_facecolor("white")
+    for ax, arq in zip(axes, arquitecturas):
+        corridas = [r for r in histories if metrics[r]["model_key"] == arq]
+        for i, run in enumerate(corridas):
+            h = histories[run]
+            receta = metrics[run]["receta"]
+            ax.plot(
+                h["epoch"],
+                h["eval_f1_macro"],
+                color=_color(arq),
+                linewidth=2,
+                linestyle=estilos[i % len(estilos)],
+                label=f"lr {_fmt_lr(receta['learning_rate'])} · {receta['epochs']} ép.",
+            )
+            mejor = h["eval_f1_macro"].idxmax()
+            ax.scatter(
+                h.loc[mejor, "epoch"],
+                h.loc[mejor, "eval_f1_macro"],
+                s=60,
+                color=_color(arq),
+                edgecolor="white",
+                linewidth=1.5,
+                zorder=3,
+            )
+        _style(ax, model_name(arq), "época", "F1 macro de validación" if ax is axes[0] else "")
+        ax.legend(frameon=False, fontsize=8, labelcolor=INK, loc="lower right")
+    _suptitle(fig, "Efecto de la receta dentro de cada arquitectura")
+    fig.tight_layout()
+    return fig
 
 
 # --------------------------------------------------------------------------------------
