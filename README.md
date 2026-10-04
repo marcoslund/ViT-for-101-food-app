@@ -143,10 +143,13 @@ cualquier otro cambio. No hace falta crear tokens ni configurar secrets para est
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marcoslund/ViT-for-101-food-app/blob/main/notebooks/2.0-preprocessing.ipynb)
 
 [`notebooks/2.0-preprocessing.ipynb`](notebooks/2.0-preprocessing.ipynb) ejecuta las decisiones de
-la tabla hallazgo → decisión del EDA con el paquete `vit_for_101_food_app.preprocessing`: split de
-validación, cache de imágenes y los transforms que replican el `AutoImageProcessor` nativo de cada
-modelo. Se verificó localmente contra un subset real de 3 clases de Food-101; el dataset completo
-(~4.7 GB) está pensado para correr en Colab.
+la tabla hallazgo → decisión del EDA con el paquete `vit_for_101_food_app.preprocessing` y responde
+una pregunta concreta: qué le pasa a una imagen antes de entrar a cada uno de los cuatro modelos, y
+quién se encarga. El modelo no hace nada por sí mismo: recibe `pixel_values` ya preparados, y la
+receta (resize, recorte, normalización, orden de canales) es distinta por checkpoint. El notebook
+cubre el split de validación, el cache de imágenes, la ficha técnica de los cuatro modelos, los
+transforms que replican el `AutoImageProcessor` de cada uno, y cierra con el contrato que verifican
+las corridas 3.x antes de entrenar. Corre con el dataset completo (~4.7 GB) en Colab.
 
 ### Regla central: nunca escribir la geometría a mano
 
@@ -157,16 +160,13 @@ geometría operando sobre tensores — necesario para poder aplicar augmentation
 verificación local la diferencia máxima medida fue `1.19e-07` para ViT y `0.0` para MobileViT
 (orden del épsilon de `float32`, no una aproximación visual).
 
-El `AutoImageProcessor` real de `google/vit-base-patch16-224-in21k` hace un **resize cuadrado
-directo** a 224×224 (`do_center_crop=False`), no `Resize(256) → CenterCrop(224)`. La sección 2 del
-EDA todavía asume ese segundo pipeline por analogía con otros ViT; quedó desactualizada frente a lo
-que mide `preprocessing.processors.ficha_tecnica()` (ver `notebooks/2.0-preprocessing.ipynb`,
-sección 3) y falta revisarla — no se toca acá porque el EDA está fuera de alcance de este cambio.
-
-Esa equivalencia es lo que permite dejar a la vista una diferencia real entre modelos sin
-"corregirla": MobileViT recibe sus canales en **BGR** y **no normaliza**, mientras que ViT recibe
-**RGB** normalizado a `[-1, 1]`. Igualar esas dos filas "para que quede prolijo" es exactamente el
-bug que documenta la sección 6 del notebook — el modelo entrenaría peor sin que nada falle.
+Según sus processors, ViT-B/16, Swin-T y DeiT-Ti hacen un **resize cuadrado directo** a 224×224
+sin recorte y normalizan en RGB (ViT y DeiT con 0,5; Swin con las constantes de ImageNet).
+MobileViT-S redimensiona el lado corto a 288, **recorta el centro** a 256, **no normaliza** y recibe
+los canales en **BGR**. Igualar esas filas "para que quede prolijo" es exactamente el bug que
+documenta la sección 6 del notebook: el modelo entrenaría peor sin que nada falle. La sección 2 del
+EDA todavía asume `Resize(256) → CenterCrop(224)` para ViT por analogía con otros modelos; quedó
+desactualizada frente a la ficha técnica y falta revisarla.
 
 ### Artefactos versionados
 
