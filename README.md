@@ -249,8 +249,7 @@ de `reports/results/` y no entrena nada. Primero mide el efecto de cada cambio d
 dentro de cada arquitectura (contrastes pareados sobre las mismas 25.250 imágenes de test) y
 elige, por F1 de validación, la corrida que representa a cada una. Con esas cuatro compara
 desempeño frente a costo, brecha por tercil de dificultad del EDA y por clase, confusiones
-compartidas y ejemplos del dataset; la lente de receta fija (las cuatro corridas originales)
-queda a la vista para mostrar cuánto depende el ranking de la receta.
+compartidas y ejemplos del dataset.
 
 Escribe tablas en `reports/results/comparativa/*.csv`, los números clave en
 `reports/results/comparativa/hallazgos.json` y figuras en `reports/figures/comparativa-*`.
