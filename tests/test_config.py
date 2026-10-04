@@ -6,8 +6,11 @@ from pathlib import Path
 from vit_for_101_food_app import config
 
 
-def test_registry_tiene_los_modelos_confirmados():
-    assert set(config.MODELS) == {"vit", "mobilevit"}
+def test_registry_tiene_los_modelos_del_benchmark():
+    # La referencia (vit), el candidato liviano (mobilevit) y los dos puntos intermedios
+    # del benchmark (deit, swin). Sumar uno es agregar una linea al registry; sacarlo
+    # rompe las corridas de reports/results que llevan su clave.
+    assert set(config.MODELS) == {"vit", "mobilevit", "deit", "swin"}
 
 
 def test_cada_modelo_apunta_a_un_checkpoint_no_vacio():
