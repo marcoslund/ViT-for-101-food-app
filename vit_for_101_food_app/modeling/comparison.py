@@ -547,7 +547,7 @@ def convergence(histories: dict[str, pd.DataFrame], ultimas: int = 3) -> pd.Data
 # --------------------------------------------------------------------------------------
 
 
-def _fmt_lr(lr: float) -> str:
+def fmt_lr(lr: float) -> str:
     """``5e-05`` → ``5e-5``: notación científica sin ceros en el exponente."""
     mantisa, exponente = f"{lr:.0e}".split("e")
     return f"{mantisa}e{int(exponente)}"
@@ -576,7 +576,7 @@ def run_label(run: str, metrics: dict[str, dict]) -> str:
     """Nombre legible de una corrida: arquitectura, learning rate y tope de épocas."""
     d = metrics[run]
     receta = d["receta"]
-    return f"{model_name(d['model_key'])} · lr {_fmt_lr(receta['learning_rate'])} · {receta['epochs']} ép."
+    return f"{model_name(d['model_key'])} · lr {fmt_lr(receta['learning_rate'])} · {receta['epochs']} ép."
 
 
 def best_runs(metrics: dict[str, dict], by: str = "best_val_f1_macro") -> dict[str, str]:
@@ -614,7 +614,7 @@ def plot_recipe_curves(histories: dict[str, pd.DataFrame], metrics: dict[str, di
                 color=_color(arq),
                 linewidth=2,
                 linestyle=estilos[i % len(estilos)],
-                label=f"lr {_fmt_lr(receta['learning_rate'])} · {receta['epochs']} ép.",
+                label=f"lr {fmt_lr(receta['learning_rate'])} · {receta['epochs']} ép.",
             )
             mejor = h["eval_f1_macro"].idxmax()
             ax.scatter(

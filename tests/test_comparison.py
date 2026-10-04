@@ -325,6 +325,12 @@ def test_run_table_una_fila_por_corrida_con_su_arquitectura_y_receta(results_rec
     assert tabla.loc["vit-lr5e-5", "f1_macro"] == pytest.approx(0.8)
 
 
+def test_fmt_lr_sin_ceros_en_el_exponente():
+    assert comparison.fmt_lr(5e-5) == "5e-5"
+    assert comparison.fmt_lr(5e-4) == "5e-4"
+    assert comparison.fmt_lr(1e-4) == "1e-4"
+
+
 def test_run_label_nombra_arquitectura_y_receta(results_recetas):
     metrics = comparison.load_metrics(["vit", "vit-lr5e-5"], results_recetas)
     assert comparison.run_label("vit-lr5e-5", metrics) == "ViT-B/16 · lr 5e-5 · 20 ép."

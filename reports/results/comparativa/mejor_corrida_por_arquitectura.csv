@@ -1,0 +1,5 @@
+,corrida,mejor_val_f1,f1_macro,mejor_por_test,coinciden
+mobilevit,mobilevit,0.8166859232789717,0.860850341383655,mobilevit,True
+vit,vit-lr5e-5,0.8431028468036468,0.8838250153427494,vit-lr5e-5,True
+swin,swin,0.8149406265237342,0.8546618100122153,swin-30ep,False
+deit,deit,0.7204269820704454,0.7765105297330394,deit,True
