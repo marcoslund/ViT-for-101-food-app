@@ -164,9 +164,7 @@ Según sus processors, ViT-B/16, Swin-T y DeiT-Ti hacen un **resize cuadrado dir
 sin recorte y normalizan en RGB (ViT y DeiT con 0,5; Swin con las constantes de ImageNet).
 MobileViT-S redimensiona el lado corto a 288, **recorta el centro** a 256, **no normaliza** y recibe
 los canales en **BGR**. Igualar esas filas "para que quede prolijo" es exactamente el bug que
-documenta la sección 6 del notebook: el modelo entrenaría peor sin que nada falle. La sección 2 del
-EDA todavía asume `Resize(256) → CenterCrop(224)` para ViT por analogía con otros modelos; quedó
-desactualizada frente a la ficha técnica y falta revisarla.
+documenta la sección 6 del notebook: el modelo entrenaría peor sin que nada falle.
 
 ### Artefactos versionados
 
