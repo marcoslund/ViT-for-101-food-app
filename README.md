@@ -12,17 +12,15 @@ Benchmark de arquitecturas transformer de visión sobre **Food-101**, orientado 
 
 Pensando en una hipotética aplicación para identificar y clasificar platos de comida a partir de una
 foto tomada con un dispositivo móvil, comparamos **varias arquitecturas transformer de visión con
-distintos compromisos entre capacidad y eficiencia**. Se evalúan arquitecturas pensadas para
-dispositivos con recursos limitados (p. ej. MobileViT) y se usa un **ViT estándar como referencia de
-mayor capacidad**.
+distintos compromisos entre capacidad y eficiencia**: MobileViT-S, DeiT-Ti, Swin-T y ViT-B/16.
 
 
-| Rol                       | Modelo      | Checkpoint                               | Parámetros | Resolución nativa |
-| ------------------------- | ----------- | ---------------------------------------- | ---------- | ----------------- |
-| **Candidato liviano**     | MobileViT-S | `apple/mobilevit-small`                  | 5,0 M      | 256×256           |
-| Liviano, transformer puro | DeiT-Ti     | `facebook/deit-tiny-patch16-224`         | 5,5 M      | 224×224           |
-| Intermedio                | Swin-T      | `microsoft/swin-tiny-patch4-window7-224` | 27,6 M     | 224×224           |
-| **Referencia**            | ViT-B/16    | `google/vit-base-patch16-224-in21k`      | 85,9 M     | 224×224           |
+| Modelo      | Checkpoint                               | Parámetros | Resolución nativa |
+| ----------- | ---------------------------------------- | ---------- | ----------------- |
+| MobileViT-S | `apple/mobilevit-small`                  | 5,0 M      | 256×256           |
+| DeiT-Ti     | `facebook/deit-tiny-patch16-224`         | 5,5 M      | 224×224           |
+| Swin-T      | `microsoft/swin-tiny-patch4-window7-224` | 27,6 M     | 224×224           |
+| ViT-B/16    | `google/vit-base-patch16-224-in21k`      | 85,9 M     | 224×224           |
 
 
 Las cuatro viven en el registry `config.MODELS`; sumar una arquitectura es agregar una línea ahí, no
@@ -35,9 +33,9 @@ La comparación busca responder dos preguntas:
 2. ¿En qué clases se concentra esa diferencia: es pareja entre las 101 categorías o se acumula en los
   platos visualmente más difíciles de distinguir?
 
-La hipótesis de partida, formulada en el EDA antes de entrenar, era que la capacidad extra de la
-referencia debería notarse sobre todo en las clases visualmente más confundibles, y que una brecha
-plana a lo largo del ranking de dificultad favorecería a la arquitectura liviana. Cómo resultó, en
+La hipótesis de partida, formulada en el EDA antes de entrenar, era que la capacidad extra de
+ViT-B/16 debería notarse sobre todo en las clases visualmente más confundibles, y que una brecha
+plana a lo largo del ranking de dificultad favorecería a MobileViT-S. Cómo resultó, en
 [Resultados](#resultados).
 
 ### Alcance
@@ -97,7 +95,7 @@ contrastes entre corridas de `[reports/results/comparativa/hallazgos.json](repor
 
 
 - La receta importa tanto como la arquitectura, y no afecta a todos igual. Bajar el learning rate de 5e-4 a 5e-5, con el resto de la receta fijo, sube la accuracy de test de ViT-B/16 de 0,824 a 0,884, pero baja la de MobileViT-S de 0,860 a 0,821; darle 30 épocas a Swin-T en lugar de 20 la deja en 0,855 (sin cambios). Por eso cada arquitectura se evalúa con su mejor receta (elegida por F1 de validación), y no con una receta común: fijarla habría perjudicado al modelo grande y favorecido a los chicos.
-- **La referencia es la mejor, y el candidato liviano pierde poco.** Sobre el test completo,
+- **ViT-B/16 es el mejor, y MobileViT-S pierde poco.** Sobre el test completo,
 MobileViT-S alcanza 0,860 de accuracy y ViT-B/16 0,884: una diferencia de 0,023 (IC 95 % de 0,019 a
 0,027). Su F1 macro (0,861) equivale al 97 % del de ViT-B/16 (0,884), con 17 veces menos parámetros,
 9 veces menos GFLOPs y una latencia en CPU int8 de 75 ms frente a 190 ms (el 39 %). Son los dos
@@ -127,7 +125,7 @@ Utilizamos el EDA para responder preguntas que condicionan el diseño del benchm
 | ------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------- |
 | 1. Estructura y splits    | ¿Está balanceado?                                       | Elección de métrica (top-1 vs macro-F1)                                    |
 | 2. Geometría              | ¿Cuánta imagen se pierde con el recorte de cada modelo? | Política de preprocesamiento por modelo, leída del checkpoint              |
-| 3. Confusión entre clases | ¿Dónde está la dificultad real?                         | Hipótesis sobre en qué clases la mayor capacidad debería marcar diferencia |
+| 3. Confusión entre clases | ¿Dónde está la dificultad real?                         | Hipótesis sobre en qué clases ViT-B/16 debería marcar diferencia           |
 | 4. Subset de benchmark    | ¿Sobre qué imágenes exactas evaluamos?                  | Manifiesto reproducible y acotado en costo                                 |
 
 
@@ -147,7 +145,7 @@ El notebook escribe en `data/processed/`, y **estos tres archivos se commitean**
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `benchmark_subset.csv`           | Una fila por imagen de evaluación (2.525 = 25 por clase × 101): ruta relativa, clase, su `margen` de dificultad y el `tercil` (fácil / medio / difícil) al que pertenece.                                     | Fija la lista exacta de imágenes de test que evalúan **todos** los modelos. El `tercil` permite medir la brecha por dificultad sin volver a muestrear.    |
 | `benchmark_subset_manifest.json` | Cómo se construyó ese CSV: semilla, imágenes por clase, conteos, las exclusiones (y la nota de que se detectaron sobre una muestra, no sobre el test completo) y el `sha256` del CSV.                         | Hace el subset reproducible y auditable: el `sha256` permite verificar meses después que el CSV no cambió, y deja asentado el alcance de las exclusiones. |
-| `class_difficulty.csv`           | Ranking de las 101 clases por dificultad, derivado de embeddings CLIP: cohesión interna de la clase, su clase vecina más confundible y cuánto se le parece, el `margen`, la accuracy zero-shot y el `tercil`. | Funda la hipótesis del benchmark (dónde debería notarse la capacidad extra) y asigna el tercil de dificultad a cada clase e imagen del subset.            |
+| `class_difficulty.csv`           | Ranking de las 101 clases por dificultad, derivado de embeddings CLIP: cohesión interna de la clase, su clase vecina más confundible y cuánto se le parece, el `margen`, la accuracy zero-shot y el `tercil`. | Funda la hipótesis del benchmark (dónde debería notarse la ventaja de ViT-B/16) y asigna el tercil de dificultad a cada clase e imagen del subset.       |
 
 
 
