@@ -1,17 +1,12 @@
 # ViT for 101 Food App
 
-<a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
-    <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
-</a>
+![](https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter)
 
-Benchmark de arquitecturas transformer de visión sobre **Food-101**, orientado a una pregunta de
-diseño: **¿qué arquitectura conviene para una aplicación con recursos acotados —posiblemente un
-dispositivo móvil— sin resignar capacidad de clasificación?**
+Benchmark de arquitecturas transformer de visión sobre **Food-101**, orientado a una pregunta de diseño: **¿qué arquitectura conviene para una aplicación con recursos acotados (posiblemente un dispositivo móvil) sin resignar capacidad de clasificación?**
 
-**Visión por Computadora III** — Carrera de Especialización en Inteligencia Artificial (CEIA) y
-Maestría en Inteligencia Artificial (MIA), FIUBA.
+**Visión por Computadora III**, Carrera de Especialización en Inteligencia Artificial (CEIA) y Maestría en Inteligencia Artificial (MIA), FIUBA.
 
-**Integrantes:** Antonella Nerea Gambarte · Florencia Priscilla Vela · Marcos Lund
+**Integrantes:** Antonella Nerea Gambarte, Florencia Priscilla Vela, Marcos Lund
 
 ## La pregunta
 
@@ -21,22 +16,24 @@ distintos compromisos entre capacidad y eficiencia**. Se evalúan arquitecturas 
 dispositivos con recursos limitados (p. ej. MobileViT) y se usa un **ViT estándar como referencia de
 mayor capacidad**.
 
-| Rol | Modelo | Checkpoint | Parámetros | Resolución nativa |
-|---|---|---|---|---|
-| **Candidato liviano** | MobileViT-S | `apple/mobilevit-small` | 5,0 M | 256×256 |
-| Liviano, transformer puro | DeiT-Ti | `facebook/deit-tiny-patch16-224` | 5,5 M | 224×224 |
-| Intermedio | Swin-T | `microsoft/swin-tiny-patch4-window7-224` | 27,6 M | 224×224 |
-| **Referencia** | ViT-B/16 | `google/vit-base-patch16-224-in21k` | 85,9 M | 224×224 |
+
+| Rol                       | Modelo      | Checkpoint                               | Parámetros | Resolución nativa |
+| ------------------------- | ----------- | ---------------------------------------- | ---------- | ----------------- |
+| **Candidato liviano**     | MobileViT-S | `apple/mobilevit-small`                  | 5,0 M      | 256×256           |
+| Liviano, transformer puro | DeiT-Ti     | `facebook/deit-tiny-patch16-224`         | 5,5 M      | 224×224           |
+| Intermedio                | Swin-T      | `microsoft/swin-tiny-patch4-window7-224` | 27,6 M     | 224×224           |
+| **Referencia**            | ViT-B/16    | `google/vit-base-patch16-224-in21k`      | 85,9 M     | 224×224           |
+
 
 Las cuatro viven en el registry `config.MODELS`; sumar una arquitectura es agregar una línea ahí, no
 tocar el pipeline.
 
 La comparación busca responder dos preguntas:
 
-1. ¿Cuánto rendimiento de clasificación se pierde —si es que se pierde— al usar arquitecturas más
-   livianas para este caso?
+1. ¿Cuánto rendimiento de clasificación se pierde, si es que se pierde, al usar arquitecturas más
+  livianas para este caso?
 2. ¿En qué clases se concentra esa diferencia: es pareja entre las 101 categorías o se acumula en los
-   platos visualmente más difíciles de distinguir?
+  platos visualmente más difíciles de distinguir?
 
 La hipótesis de partida, formulada en el EDA antes de entrenar, era que la capacidad extra de la
 referencia debería notarse sobre todo en las clases visualmente más confundibles, y que una brecha
@@ -45,22 +42,24 @@ plana a lo largo del ranking de dificultad favorecería a la arquitectura livian
 
 ### Alcance
 
-No desplegamos nada. Todos los modelos se entrenan y evalúan **localmente, sobre el mismo hardware**.
+Todos los modelos se entrenan y evalúan **localmente, sobre el mismo hardware**.
 Se miden dos familias de métricas: **desempeño** (top-1 accuracy y macro-F1) y **costo
 arquitectónico** (parámetros, FLOPs, tamaño del modelo y latencia de inferencia). La adecuación a un
 dispositivo con recursos limitados se **argumenta** a partir de esas mediciones.
 
 ## El dataset
 
-[**Food-101**](https://data.vision.ee.ethz.ch/cvl/datasets_extra/food-101/) (Bossard et al., ECCV 2014)
+**[Food-101](https://data.vision.ee.ethz.ch/cvl/datasets_extra/food-101/)** (Bossard et al., ECCV 2014)
 
-| | |
-|---|---|
-| Clases | 101 |
-| Imágenes | 101.000 (1.000 por clase) |
+
+|               |                                |
+| ------------- | ------------------------------ |
+| Clases        | 101                            |
+| Imágenes      | 101.000 (1.000 por clase)      |
 | Split oficial | 750 train / 250 test por clase |
-| Resolución | lado máximo 512 px |
-| Tamaño | ~5 GB comprimido |
+| Resolución    | lado máximo 512 px             |
+| Tamaño        | ~5 GB comprimido               |
+
 
 El split de **test fue curado manualmente**; el de **train contiene ruido** intencional (colores
 intensos y algunas etiquetas incorrectas), según los propios autores. Usamos los splits oficiales
@@ -68,153 +67,131 @@ sin modificar: cualquier split propio haría los resultados incomparables con la
 
 ## Estado del proyecto
 
-- [x] **EDA** — [`notebooks/1.0-eda-food101.ipynb`](notebooks/1.0-eda-food101.ipynb)
-- [x] **Preprocesamiento** — [`notebooks/2.0-preprocessing.ipynb`](notebooks/2.0-preprocessing.ipynb)
-- [x] **Fine-tuning y evaluación** de las cuatro arquitecturas — [`notebooks/3.1`](notebooks/3.1-mobilevit.ipynb) a [`3.4`](notebooks/3.4-vit.ipynb)
-- [x] **Variaciones de receta** (learning rate y tope de épocas) — [`notebooks/3.5`](notebooks/3.5-swin-30ep.ipynb) a [`3.8`](notebooks/3.8-mobilevit-lr5e-5-30ep.ipynb)
-- [x] **Análisis integral y contraste de la hipótesis** — [`notebooks/4.0-comparativa.ipynb`](notebooks/4.0-comparativa.ipynb)
+- [x] **EDA** (`[notebooks/1.0-eda-food101.ipynb](notebooks/1.0-eda-food101.ipynb)`)
+- [x] **Preprocesamiento** (`[notebooks/2.0-preprocessing.ipynb](notebooks/2.0-preprocessing.ipynb)`)
+- [x] **Fine-tuning y evaluación** de las cuatro arquitecturas (`[notebooks/3.1](notebooks/3.1-mobilevit.ipynb)` a `[3.4](notebooks/3.4-vit.ipynb)`)
+- [x] **Variaciones de receta** en learning rate y tope de épocas (`[notebooks/3.5](notebooks/3.5-swin-30ep.ipynb)` a `[3.8](notebooks/3.8-mobilevit-lr5e-5-30ep.ipynb)`)
+- [x] **Análisis integral y contraste de la hipótesis** (`[notebooks/4.0-comparativa.ipynb](notebooks/4.0-comparativa.ipynb)`)
+
+
 
 ## Resultados
 
 Ocho corridas: las cuatro arquitecturas con una receta común (lr 5e-4, 20 épocas) y cuatro
 variaciones de learning rate y tope de épocas. El análisis integral elige, por F1 de validación, la
-receta de cada arquitectura y compara con esas cuatro corridas sobre las 25.250 imágenes del test.
-Los números salen de [`reports/results/comparativa/hallazgos.json`](reports/results/comparativa/hallazgos.json).
+receta de cada arquitectura (en **negrita** abajo) y compara esas cuatro sobre las 25.250 imágenes
+del test. Los números de cada corrida salen de su `reports/results/<corrida>/metrics.json`, y los
+contrastes entre corridas de `[reports/results/comparativa/hallazgos.json](reports/results/comparativa/hallazgos.json)`.
 
-| Modelo | Receta elegida | F1 macro (test) | Parámetros | Latencia CPU int8 |
-|---|---|---|---|---|
-| ViT-B/16 | lr 5e-5 · 20 ép. | **0,884** | 85,9 M | 190 ms |
-| MobileViT-S | lr 5e-4 · 20 ép. | 0,861 | 5,0 M | 75 ms |
-| Swin-T | lr 5e-4 · 20 ép. | 0,855 | 27,6 M | 89 ms |
-| DeiT-Ti | lr 5e-4 · 20 ép. | 0,777 | 5,5 M | 19 ms |
 
-- **La receta pesa tanto como la arquitectura, con signo distinto según el tamaño.** Bajar el
-  learning rate de 5e-4 a 5e-5 le suma 6,0 puntos de accuracy a ViT-B/16 y le resta 3,9 a
-  MobileViT-S; darle 30 épocas a Swin-T no cambia nada. Por eso cada arquitectura entra con su propia
-  receta, y comparar a receta fija hubiera favorecido a los modelos chicos.
-- **La referencia es la mejor, y el candidato liviano pierde poco.** MobileViT-S queda 2,3 puntos de
-  accuracy por debajo de ViT-B/16 (IC 95 % de 1,9 a 2,7) y conserva el 97 % de su F1 con 17 veces
-  menos parámetros, 9 veces menos GFLOPs y el 39 % de su latencia en CPU int8. Son los dos únicos
-  modelos en el frente de Pareto de los tres ejes de costo.
-- **La brecha es pareja entre clases fáciles y difíciles.** MobileViT-S queda entre 1,9 y 2,6 puntos
-  por debajo en los tres terciles de dificultad del EDA, sin tendencia con la dificultad. La hipótesis
-  de que la capacidad extra se notaría sobre todo en las clases confundibles no se confirma. DeiT-Ti,
-  en cambio, sí pierde más en las difíciles (de 7,5 a 12,9 puntos).
+| Modelo          | Receta              | F1 macro (test) | Accuracy (test) | Parámetros | Latencia CPU int8 |
+| --------------- | ------------------- | --------------- | --------------- | ---------- | ----------------- |
+| **MobileViT-S** | **lr 5e-4, 20 ép.** | **0,861**       | **0,860**       | **5,0 M**  | **75 ms**         |
+| MobileViT-S     | lr 5e-5, 20 ép.     | 0,821           | 0,821           | 5,0 M      | 101 ms            |
+| MobileViT-S     | lr 5e-5, 30 ép.     | 0,833           | 0,833           | 5,0 M      | 102 ms            |
+| **Swin-T**      | **lr 5e-4, 20 ép.** | **0,855**       | **0,855**       | **27,6 M** | **89 ms**         |
+| Swin-T          | lr 5e-4, 30 ép.     | 0,855           | 0,855           | 27,6 M     | 98 ms             |
+| **DeiT-Ti**     | **lr 5e-4, 20 ép.** | **0,777**       | **0,777**       | **5,5 M**  | **19 ms**         |
+| ViT-B/16        | lr 5e-4, 20 ép.     | 0,823           | 0,824           | 85,9 M     | 201 ms            |
+| **ViT-B/16**    | **lr 5e-5, 20 ép.** | **0,884**       | **0,884**       | **85,9 M** | **190 ms**        |
+
+
+- La receta importa tanto como la arquitectura, y no afecta a todos igual. Bajar el learning rate de 5e-4 a 5e-5, con el resto de la receta fijo, sube la accuracy de test de ViT-B/16 de 0,824 a 0,884, pero baja la de MobileViT-S de 0,860 a 0,821; darle 30 épocas a Swin-T en lugar de 20 la deja en 0,855 (sin cambios). Por eso cada arquitectura se evalúa con su mejor receta (elegida por F1 de validación), y no con una receta común: fijarla habría perjudicado al modelo grande y favorecido a los chicos.
+- **La referencia es la mejor, y el candidato liviano pierde poco.** Sobre el test completo,
+MobileViT-S alcanza 0,860 de accuracy y ViT-B/16 0,884: una diferencia de 0,023 (IC 95 % de 0,019 a
+0,027). Su F1 macro (0,861) equivale al 97 % del de ViT-B/16 (0,884), con 17 veces menos parámetros,
+9 veces menos GFLOPs y una latencia en CPU int8 de 75 ms frente a 190 ms (el 39 %). Son los dos
+únicos modelos en el frente de Pareto de los tres ejes de costo.
+- **La brecha es pareja entre clases fáciles y difíciles.** La diferencia de accuracy entre
+MobileViT-S y ViT-B/16 se mantiene casi constante en los tres terciles de dificultad del EDA: 0,912
+contra 0,932 en el fácil, 0,874 contra 0,898 en el medio y 0,795 contra 0,821 en el difícil, sin
+crecer con la dificultad (ρ de Spearman 0,16). La hipótesis de que la capacidad extra se notaría
+sobre todo en las clases confundibles no se confirma. DeiT-Ti, en cambio, sí se despega más cuanto
+más difícil es la clase: pasa de 0,857 contra 0,932 en el tercil fácil a 0,692 contra 0,821 en el
+difícil.
 - **Hay un núcleo de errores que no depende del modelo.** Steak ↔ filet mignon, chocolate cake ↔
-  chocolate mousse y los dos tartares son las confusiones dominantes en las cuatro arquitecturas; el
-  4,5 % del test lo fallan las cuatro.
+chocolate mousse y los dos tartares son las confusiones dominantes en las cuatro arquitecturas; el
+4,5 % del test lo fallan las cuatro.
 
 Limitaciones: una semilla por corrida, barrido de recetas incompleto (DeiT-Ti no se probó con lr 5e-5,
 Swin-T no probó otro learning rate) y latencias medidas en la CPU de una notebook, no en un teléfono.
 
 ## EDA
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marcoslund/ViT-for-101-food-app/blob/main/notebooks/1.0-eda-food101.ipynb)
+![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)
 
-El EDA no describe Food-101 en abstracto: cada sección responde una pregunta que condiciona el
-diseño del benchmark.
+Utilizamos el EDA para responder preguntas que condicionan el diseño del benchmark.
 
-| Sección | Pregunta | Decisión que habilita |
-|---|---|---|
-| 1. Estructura y splits | ¿Está balanceado? | Elección de métrica (top-1 vs macro-F1) |
-| 2. Geometría | ¿Cuánta imagen se pierde con el recorte de cada modelo? | Política de preprocesamiento por modelo, leída del checkpoint |
-| 3. Integridad | ¿Hay imágenes rotas o en modos raros? | Lista de exclusión del dataloader (quedó vacía) |
-| 4. Ruido y duplicados | ¿Hay mislabels o fuga train↔test? | Validez del set de evaluación |
-| 5. Confusión entre clases | ¿Dónde está la dificultad real? | Hipótesis sobre en qué clases la mayor capacidad debería marcar diferencia |
-| 6. Subset de benchmark | ¿Sobre qué imágenes exactas evaluamos? | Manifiesto reproducible y acotado en costo |
-| 7. Conclusiones | — | Tabla hallazgo → decisión de diseño |
 
-(La sección 0, Setup, no está en la tabla: prepara el entorno, no responde una pregunta de diseño.)
+| Sección                   | Pregunta                                                | Decisión que habilita                                                      |
+| ------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------- |
+| 1. Estructura y splits    | ¿Está balanceado?                                       | Elección de métrica (top-1 vs macro-F1)                                    |
+| 2. Geometría              | ¿Cuánta imagen se pierde con el recorte de cada modelo? | Política de preprocesamiento por modelo, leída del checkpoint              |
+| 3. Confusión entre clases | ¿Dónde está la dificultad real?                         | Hipótesis sobre en qué clases la mayor capacidad debería marcar diferencia |
+| 4. Subset de benchmark    | ¿Sobre qué imágenes exactas evaluamos?                  | Manifiesto reproducible y acotado en costo                                 |
 
-El notebook descarga y extrae Food-101 por su cuenta. La **sección 5** usa CLIP ViT-B/32 y necesita
-GPU: en Colab, *Entorno de ejecución → Cambiar tipo de entorno → GPU (T4)*. CLIP es solo el
-instrumento de medición del EDA; no compite en el benchmark.
 
-### Costo computacional
+Para ver la confusion entre clases usamos CLIP ViT-B/32 y necesita GPU: en Colab, *Entorno de ejecución, cambiar tipo de entorno a GPU (T4)*. 
 
-Todo se controla desde la celda **0.1 Parámetros**. Las secciones globales (splits, tamaños de
-archivo) usan el 100 % de los datos porque son baratas; las que decodifican píxeles trabajan sobre
-una muestra estratificada por clase.
-
-| Parámetro | Default | Efecto |
-|---|---|---|
-| `N_PER_CLASS_INSPECT` | 60 | Integridad, color, nitidez y hashes (secciones 3-4) |
-| `N_PER_CLASS_CLIP` | 30 | Embeddings CLIP (sección 5) |
-| `N_PER_CLASS_BENCH` | 25 | Tamaño del subset de evaluación (sección 6) |
+CLIP es solo el instrumento de medición del EDA; no compite en el benchmark.
 
 Si vas a correrlo más de una vez, poné `USE_DRIVE_CACHE = True`: el `.tar.gz` de 5 GB queda
 cacheado en Drive y las sesiones siguientes no lo vuelven a descargar.
 
 ## Artefactos del EDA
 
-El notebook escribe en `data/processed/`, y **estos tres archivos se commitean** porque son la
-entrada del notebook de benchmark:
+El notebook escribe en `data/processed/`, y **estos tres archivos se commitean** porque son la entrada del notebook de benchmark:
 
-| Archivo | Contenido |
-|---|---|
-| `benchmark_subset.csv` | Manifiesto de evaluación: imagen, clase, margen de dificultad, tercil |
-| `benchmark_subset_manifest.json` | Semilla, exclusiones, conteos y `sha256` del CSV |
-| `class_difficulty.csv` | Ranking de dificultad de las 101 clases con su vecino más confundible |
 
-Todos los modelos del benchmark evalúan **exactamente el mismo archivo**, sin volver a muestrear.
-Esa es la única forma de que las diferencias medidas sean diferencias entre arquitecturas y no
-entre muestras. El `sha256` del manifiesto permite verificarlo meses después.
+| Archivo                          | Qué contiene                                                                                                                                                                                                  | Para qué se usa                                                                                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `benchmark_subset.csv`           | Una fila por imagen de evaluación (2.525 = 25 por clase × 101): ruta relativa, clase, su `margen` de dificultad y el `tercil` (fácil / medio / difícil) al que pertenece.                                     | Fija la lista exacta de imágenes de test que evalúan **todos** los modelos. El `tercil` permite medir la brecha por dificultad sin volver a muestrear.    |
+| `benchmark_subset_manifest.json` | Cómo se construyó ese CSV: semilla, imágenes por clase, conteos, las exclusiones (y la nota de que se detectaron sobre una muestra, no sobre el test completo) y el `sha256` del CSV.                         | Hace el subset reproducible y auditable: el `sha256` permite verificar meses después que el CSV no cambió, y deja asentado el alcance de las exclusiones. |
+| `class_difficulty.csv`           | Ranking de las 101 clases por dificultad, derivado de embeddings CLIP: cohesión interna de la clase, su clase vecina más confundible y cuánto se le parece, el `margen`, la accuracy zero-shot y el `tercil`. | Funda la hipótesis del benchmark (dónde debería notarse la capacidad extra) y asigna el tercil de dificultad a cada clase e imagen del subset.            |
 
-`make test` valida ese contrato: que el CSV coincida con su hash, que el subset siga balanceado en
-25 imágenes × 101 clases, que respete las exclusiones y que los terciles sean consistentes con el
-ranking de dificultad.
 
-### Guardarlos desde Colab
 
-*Guardar una copia en GitHub* commitea **solo el `.ipynb`**. Los artefactos (`data/processed/*.csv`,
-`*.json`) se generan en disco efímero del runtime de Colab y no hay ninguna celda que los suba por su
-cuenta: el propio notebook no tiene ningún paso que hable con git o con un token.
-
-Lo que se hace en la práctica, y lo que muestra el historial de commits de este repo (`Corrida del
-EDA desde Colab`, `Artefactos del EDA regenerados en la corrida de Colab`): después de correr el
-notebook completo en Colab, se descargan los archivos de `data/processed/` (panel de archivos de
-Colab, o vía Drive si `USE_DRIVE_CACHE = True`) y se commitean desde el checkout local, como
-cualquier otro cambio. No hace falta crear tokens ni configurar secrets para esto.
 
 ## Preprocesamiento
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marcoslund/ViT-for-101-food-app/blob/main/notebooks/2.0-preprocessing.ipynb)
+![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)
 
-[`notebooks/2.0-preprocessing.ipynb`](notebooks/2.0-preprocessing.ipynb) ejecuta las decisiones de
-la tabla hallazgo → decisión del EDA con el paquete `vit_for_101_food_app.preprocessing` y responde
-una pregunta concreta: qué le pasa a una imagen antes de entrar a cada uno de los cuatro modelos, y
-quién se encarga. El modelo no hace nada por sí mismo: recibe `pixel_values` ya preparados, y la
-receta (resize, recorte, normalización, orden de canales) es distinta por checkpoint. El notebook
-cubre el split de validación, el cache de imágenes, la ficha técnica de los cuatro modelos, los
-transforms que replican el `AutoImageProcessor` de cada uno, y cierra con el contrato que verifican
+`[notebooks/2.0-preprocessing.ipynb](notebooks/2.0-preprocessing.ipynb)` ejecuta las decisiones de las decisiones de diseño que salieron del EDA con el paquete `vit_for_101_food_app.preprocessing` 
+
+y muestra qué le pasa a una imagen antes de entrar a cada uno de los cuatro modelos. 
+
+El modelo recibe `pixel_values` ya preparados; la receta (resize, recorte, normalización, orden de canales) es distinta por checkpoint. El notebook cubre el split de validación, el cache de imágenes, la ficha técnica de los cuatro modelos, los transforms que replican el `AutoImageProcessor` de cada uno, y cierra con el contrato que verifican
 las corridas 3.x antes de entrenar. Corre con el dataset completo (~4.7 GB) en Colab.
 
-### Regla central: nunca escribir la geometría a mano
+### No escribimos la geometría a mano
 
 Cada modelo consume su propio `AutoImageProcessor` de HuggingFace, leído en runtime por
-`preprocessing.processors.spec_for`. `preprocessing.policies.build_transform` reconstruye esa misma
-geometría operando sobre tensores — necesario para poder aplicar augmentation con
-`torchvision.transforms.v2` — y `make verify` comprueba que ambos coinciden. En la corrida de Colab
-del notebook 2 la diferencia máxima medida fue `1.2e-07` para ViT y DeiT, `4.8e-07` para Swin y `0.0`
-para MobileViT (orden del épsilon de `float32`, no una aproximación visual).
+`preprocessing.processors.spec_for`. 
 
-Según sus processors, ViT-B/16, Swin-T y DeiT-Ti hacen un **resize cuadrado directo** a 224×224
-sin recorte y normalizan en RGB (ViT y DeiT con 0,5; Swin con las constantes de ImageNet).
-MobileViT-S redimensiona el lado corto a 288, **recorta el centro** a 256, **no normaliza** y recibe
-los canales en **BGR**. Igualar esas filas "para que quede prolijo" es exactamente el bug que
-documenta la sección 6 del notebook: el modelo entrenaría peor sin que nada falle.
+`preprocessing.policies.build_transform` reconstruye esa misma geometría operando sobre tensores (necesario para poder aplicar augmentation con `torchvision.transforms.v2`).
+
+En la corrida de Colab del notebook 2 la diferencia máxima medida fue `1.2e-07` para ViT y DeiT, `4.8e-07` para Swin y `0.0` para MobileViT (orden del épsilon de `float32`, no una aproximación visual).
+
+Según sus processors, 
+
+- ViT-B/16, Swin-T y DeiT-Ti hacen un **resize cuadrado directo** a 224×224 sin recorte y normalizan en RGB (ViT y DeiT con 0,5; Swin con las constantes de ImageNet). 
+- MobileViT-S redimensiona el lado corto a 288, **recorta el centro** a 256, **no normaliza** y recibe los canales en **BGR**. Igualar esas filas "para que quede prolijo" sería un error: la sección 6 del notebook muestra que cada tensor es el que su checkpoint espera, y que forzarlos a coincidir haría entrenar al modelo sobre datos que nunca vio, sin que nada falle en ejecución.
+
+
 
 ### Artefactos versionados
 
 Además de los tres artefactos del EDA, `data/processed/` versiona el split de validación y el mapa
-de etiquetas — el mismo tipo de contrato: todos los modelos tienen que entrenar y validar sobre los
+de etiquetas, el mismo tipo de contrato: todos los modelos tienen que entrenar y validar sobre los
 mismos índices.
 
-| Archivo | Contenido |
-|---|---|
-| `train_val_split.csv` | Split de validación recortado de train (estratificado por clase, semilla fija) |
-| `train_val_split_manifest.json` | Semilla, `val_fraction`, conteos por clase y `sha256` del CSV |
-| `label_map.json` | `id2label` / `label2id`, fijados por el orden de `meta/classes.txt` |
+
+| Archivo                         | Contenido                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------ |
+| `train_val_split.csv`           | Split de validación recortado de train (estratificado por clase, semilla fija) |
+| `train_val_split_manifest.json` | Semilla, `val_fraction`, conteos por clase y `sha256` del CSV                  |
+| `label_map.json`                | `id2label` / `label2id`, fijados por el orden de `meta/classes.txt`            |
+
 
 El split de **test nunca se toca**: `preprocessing.splits.load_split("test")` lee directo de
 `meta/test.txt`, no pasa por el CSV.
@@ -225,12 +202,14 @@ El split de **test nunca se toca**: `preprocessing.splits.load_split("test")` le
 make preprocess   # = make data split cache verify
 ```
 
-| Target | Comando | Qué hace |
-|---|---|---|
-| `make data` | `dataset.py download` | Descarga y extrae Food-101 (~4.7 GB, idempotente) |
-| `make split` | `dataset.py split` | Escribe `train_val_split.csv`, su manifiesto y `label_map.json` |
-| `make cache` | `dataset.py cache` | Reescala todo el dataset al lado corto configurado (`CACHE_SHORT_SIDE = 288`) en `data/interim/`, regenerable y no versionado |
-| `make verify` | `features.py verify` | Compara los transforms `eval` contra el `AutoImageProcessor` real de cada modelo |
+
+| Target        | Comando               | Qué hace                                                                                                                      |
+| ------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `make data`   | `dataset.py download` | Descarga y extrae Food-101 (~4.7 GB, idempotente)                                                                             |
+| `make split`  | `dataset.py split`    | Escribe `train_val_split.csv`, su manifiesto y `label_map.json`                                                               |
+| `make cache`  | `dataset.py cache`    | Reescala todo el dataset al lado corto configurado (`CACHE_SHORT_SIDE = 288`) en `data/interim/`, regenerable y no versionado |
+| `make verify` | `features.py verify`  | Compara los transforms `eval` contra el `AutoImageProcessor` real de cada modelo                                              |
+
 
 `features.py preview` (fuera de `make preprocess`) escribe una grilla antes/después por modelo en
 `reports/figures/`, para inspección visual.
@@ -238,25 +217,26 @@ make preprocess   # = make data split cache verify
 ## Entrenamiento y benchmark
 
 Todo el código de modelo y entrenamiento vive en `vit_for_101_food_app.modeling` y es
-**genérico sobre `model_key`** (una clave del registry `config.MODELS`): sumar una
+**genérico sobre** `model_key` (una clave del registry `config.MODELS`): sumar una
 arquitectura al benchmark es agregar una línea al registry, no escribir un pipeline nuevo.
 
-| Módulo | Responsabilidad |
-|---|---|
-| `training.py` | Construcción del modelo, `TrainingRecipe` (misma estructura para todos; el learning rate y el tope de épocas se variaron a propósito en los notebooks 3.5 a 3.8), `Trainer` de HuggingFace y `resolve_batch_plan` (batch/acumulación/checkpointing según resolución y GPU) |
-| `evaluation.py` | Predicciones por imagen, métricas por tercil, reporte por clase, confusiones, FLOPs, tamaño de los pesos (fp32/fp16/int8) y latencia en GPU/CPU —incluida la medición del lado del dispositivo con el modelo **cuantizado a int8** en CPU—, **el mismo código para todos los modelos** |
-| `benchmark.py` | Orquestación: verifica artefactos, entrena, evalúa y escribe `metrics.json` + CSV |
+
+| Módulo          | Responsabilidad                                                                                                                                                                                                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `training.py`   | Construcción del modelo, `TrainingRecipe` (misma estructura para todos; el learning rate y el tope de épocas se variaron a propósito en los notebooks 3.5 a 3.8), `Trainer` de HuggingFace y `resolve_batch_plan` (batch/acumulación/checkpointing según resolución y GPU)             |
+| `evaluation.py` | Predicciones por imagen, métricas por tercil, reporte por clase, confusiones, FLOPs, tamaño de los pesos (fp32/fp16/int8) y latencia en GPU/CPU (incluida la medición del lado del dispositivo con el modelo **cuantizado a int8** en CPU), **el mismo código para todos los modelos** |
+| `benchmark.py`  | Orquestación: verifica artefactos, entrena, evalúa y escribe `metrics.json` + CSV                                                                                                                                                                                                      |
+
 
 Hay **dos formas de correr el mismo pipeline**, que miden exactamente lo mismo:
 
 - **Notebooks** (`notebooks/3.1-mobilevit.ipynb`, `3.2-swin.ipynb`, `3.3-deit.ipynb`,
-  `3.4-vit.ipynb`) — celda por celda, con salidas visibles para el informe. Los cuatro son
-  idénticos salvo `MODEL_KEY`; están pensados para Colab (secciones 0.2 y 0.3 arman el
-  entorno y los datos). Los notebooks `3.5` a `3.8` repiten tres de esas corridas variando
-  la receta (lr 5e-5 para MobileViT y ViT, tope de 30 épocas para Swin y MobileViT) y
-  escriben en `reports/results/<model>-<variante>/`.
-- **CLI headless** — para una corrida desatendida (Kaggle, VM):
-
+`3.4-vit.ipynb`), celda por celda, con salidas visibles para el informe. Los cuatro son
+idénticos salvo `MODEL_KEY`; están pensados para Colab (secciones 0.2 y 0.3 arman el
+entorno y los datos). Los notebooks `3.5` a `3.8` repiten tres de esas corridas variando
+la receta (lr 5e-5 para MobileViT y ViT, tope de 30 épocas para Swin y MobileViT) y
+escriben en `reports/results/<model>-<variante>/`.
+- **CLI headless**, para una corrida desatendida (Kaggle, VM):
   ```bash
   python -m vit_for_101_food_app.modeling.train --model swin      # benchmark completo
   python -m vit_for_101_food_app.modeling.train --model mobilevit --resume
@@ -276,19 +256,23 @@ python -m vit_for_101_food_app.tracking
 mlflow ui --backend-store-uri sqlite:///mlflow.db
 ```
 
+
+
 ### Análisis integral
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marcoslund/ViT-for-101-food-app/blob/main/notebooks/4.0-comparativa.ipynb)
+![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)
 
-[`notebooks/4.0-comparativa.ipynb`](notebooks/4.0-comparativa.ipynb) junta las ocho corridas
-de `reports/results/` y no entrena nada. Primero mide el efecto de cada cambio de receta
-dentro de cada arquitectura (contrastes pareados sobre las mismas 25.250 imágenes de test) y
-elige, por F1 de validación, la corrida que representa a cada una. Con esas cuatro compara
-desempeño frente a costo, brecha por tercil de dificultad del EDA y por clase, confusiones
-compartidas y ejemplos del dataset.
+`[notebooks/4.0-comparativa.ipynb](notebooks/4.0-comparativa.ipynb)` junta las ocho corridas
+de `reports/results/` 
+
+Primero mide el efecto de cada cambio de receta dentro de cada arquitectura (contrastes pareados sobre las mismas 25.250 imágenes de test) y elige, por F1 de validación, la corrida que representa a cada una. 
+
+Con esas cuatro compara desempeño frente a costo, brecha por tercil de dificultad del EDA y por clase, confusiones compartidas y ejemplos del dataset.
 
 Escribe tablas en `reports/results/comparativa/*.csv`, los números clave en
 `reports/results/comparativa/hallazgos.json` y figuras en `reports/figures/comparativa-*`.
+
+
 La lógica vive en `modeling/comparison.py` y `modeling/examples.py`, con tests. Corre con las
 dependencias base (sin GPU ni el extra `deep`); solo la sección de ejemplos necesita el
 `food-101.tar.gz` en `data/raw/`, del que extrae las ~60 imágenes que muestra.
@@ -379,6 +363,8 @@ Generada con [cookiecutter-data-science](https://cookiecutter-data-science.drive
         └── loaders.py          <- Dataset y DataLoaders
 ```
 
+
+
 ## Citación
 
 ```bibtex
@@ -390,6 +376,6 @@ Generada con [cookiecutter-data-science](https://cookiecutter-data-science.drive
 }
 ```
 
-El código de este repositorio está bajo licencia MIT (ver [`LICENSE`](LICENSE)). El uso del
+El código de este repositorio está bajo licencia MIT (ver `[LICENSE](LICENSE)`). El uso del
 **dataset** está sujeto al `license_agreement.txt` incluido en la descarga (uso académico / no
 comercial). Este repositorio **no distribuye las imágenes**, solo el código que las analiza.
