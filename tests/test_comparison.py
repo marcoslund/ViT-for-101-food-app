@@ -351,3 +351,17 @@ def test_plot_recipe_curves_un_panel_por_arquitectura(results_recetas):
     assert len(ejes) == 2
     lineas_por_eje = sorted(len(ax.get_lines()) for ax in ejes)
     assert lineas_por_eje == [1, 2]
+
+
+def test_plot_recipe_curves_ordena_los_paneles_en_grilla(results_recetas):
+    corridas = ["vit", "vit-lr5e-5", "mobilevit"]
+    metrics = comparison.load_metrics(corridas, results_recetas)
+    historias = comparison.load_histories(corridas, results_recetas)
+    # Con dos columnas y dos arquitecturas, una fila; con una columna, uno debajo del otro.
+    en_fila = [ax.get_position() for ax in comparison.plot_recipe_curves(historias, metrics).axes]
+    assert en_fila[0].y0 == en_fila[1].y0
+    apilados = [
+        ax.get_position() for ax in comparison.plot_recipe_curves(historias, metrics, ncols=1).axes
+    ]
+    assert apilados[0].x0 == apilados[1].x0
+    assert apilados[0].y0 > apilados[1].y0
