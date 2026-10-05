@@ -570,7 +570,7 @@ def run_label(run: str, metrics: dict[str, dict]) -> str:
     """Nombre legible de una corrida: arquitectura, learning rate y tope de épocas."""
     d = metrics[run]
     receta = d["receta"]
-    return f"{model_name(d['model_key'])} · lr {fmt_lr(receta['learning_rate'])} · {receta['epochs']} ép."
+    return f"{model_name(d['model_key'])} - lr {fmt_lr(receta['learning_rate'])} - {receta['epochs']} ép."
 
 
 def best_runs(metrics: dict[str, dict], by: str = "best_val_f1_macro") -> dict[str, str]:
@@ -608,7 +608,7 @@ def plot_recipe_curves(histories: dict[str, pd.DataFrame], metrics: dict[str, di
                 color=_color(arq),
                 linewidth=2,
                 linestyle=estilos[i % len(estilos)],
-                label=f"lr {fmt_lr(receta['learning_rate'])} · {receta['epochs']} ép.",
+                label=f"lr {fmt_lr(receta['learning_rate'])} - {receta['epochs']} ép.",
             )
             mejor = h["eval_f1_macro"].idxmax()
             ax.scatter(
