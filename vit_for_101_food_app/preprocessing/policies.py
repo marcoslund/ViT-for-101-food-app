@@ -4,7 +4,10 @@ La separacion central del diseno:
 
     build_transform(spec, policy) = politica.geometria(spec.target_size)
                                   + cola de tensor derivada del spec
-                                  + politica.after_tensor()
+
+Hay dos politicas: ``eval`` (la replica del processor, para validacion y test) y
+``standard`` (RandomResizedCrop + flip horizontal, para entrenamiento). Son las dos que
+usaron todas las corridas del benchmark; no hay otras.
 
 La politica aporta SOLO la parte geometrica. La normalizacion, el reescalado y el orden
 de canales salen siempre del ProcessorSpec, de modo que es estructuralmente imposible
@@ -18,7 +21,7 @@ equivalencia.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import math
 
 import torch
@@ -74,7 +77,6 @@ class Policy:
 
     name: str
     geometry: Callable[[ProcessorSpec, InterpolationMode], list]
-    after_tensor: Callable[[], list] = field(default=list)
     descripcion: str = ""
 
 
@@ -118,25 +120,6 @@ def _geometria_standard(spec: ProcessorSpec, interp: InterpolationMode) -> list:
     ]
 
 
-def _geometria_strong(spec: ProcessorSpec, interp: InterpolationMode) -> list:
-    return [*_geometria_standard(spec, interp), v2.RandAugment(interpolation=interp)]
-
-
-def _geometria_resize_only(spec: ProcessorSpec, interp: InterpolationMode) -> list:
-    """Ablacion de la seccion 7 #5 del EDA: sin recorte, para descartar que las
-    diferencias entre modelos vengan de cuanta imagen descarta el CenterCrop.
-
-    Para un modelo que ya no recorta en 'eval' (spec.resize_shortest is None, hoy
-    ViT) esto da exactamente el mismo resultado que 'eval': no hay CenterCrop que
-    quitar. La ablacion solo tiene contenido para modelos que si recortan (hoy
-    MobileViT). Ver test_resize_only_es_identico_a_eval_solo_si_no_hay_crop.
-
-    antialias=True explicito por la misma razon que en _geometria_eval: consistencia
-    entre las tres geometrias, para que ninguna quede leyendo el default de la libreria.
-    """
-    return [v2.Resize((spec.target_size, spec.target_size), interpolation=interp, antialias=True)]
-
-
 POLICIES: dict[str, Policy] = {
     "eval": Policy(
         name="eval",
@@ -147,22 +130,6 @@ POLICIES: dict[str, Policy] = {
         name="standard",
         geometry=_geometria_standard,
         descripcion="RandomResizedCrop(0.65-1.0) + HorizontalFlip",
-    ),
-    "strong": Policy(
-        name="strong",
-        geometry=_geometria_strong,
-        after_tensor=lambda: [v2.RandomErasing(p=0.25)],
-        descripcion="standard + RandAugment + RandomErasing",
-    ),
-    "resize_only": Policy(
-        name="resize_only",
-        geometry=_geometria_resize_only,
-        descripcion=(
-            "sin recorte; ablacion de la seccion 7 #5 del EDA. Para un modelo sin "
-            "center crop (resize_shortest is None, p.ej. ViT) esto es bit a bit "
-            "identico a 'eval': no hay nada que ablacionar. Solo difiere de 'eval' "
-            "para modelos que si recortan (p.ej. MobileViT)"
-        ),
     ),
 }
 
@@ -216,7 +183,6 @@ def build_transform(spec: ProcessorSpec, policy: str = "standard") -> Callable:
             v2.ToImage(),  # PIL -> tensor uint8 antes de la geometria, como HuggingFace
             *elegida.geometry(spec, _interp(spec)),
             *_cola_de_tensor(spec),
-            *elegida.after_tensor(),
         ]
     )
 

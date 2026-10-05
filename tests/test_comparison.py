@@ -333,8 +333,8 @@ def test_fmt_lr_sin_ceros_en_el_exponente():
 
 def test_run_label_nombra_arquitectura_y_receta(results_recetas):
     metrics = comparison.load_metrics(["vit", "vit-lr5e-5"], results_recetas)
-    assert comparison.run_label("vit-lr5e-5", metrics) == "ViT-B/16 · lr 5e-5 · 20 ép."
-    assert comparison.run_label("vit", metrics) == "ViT-B/16 · lr 5e-4 · 20 ép."
+    assert comparison.run_label("vit-lr5e-5", metrics) == "ViT-B/16 - lr 5e-5 - 20 ép."
+    assert comparison.run_label("vit", metrics) == "ViT-B/16 - lr 5e-4 - 20 ép."
 
 
 def test_best_runs_elige_por_f1_de_validacion_dentro_de_cada_arquitectura(results_recetas):

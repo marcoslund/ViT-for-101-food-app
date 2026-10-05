@@ -94,7 +94,7 @@ def build_dataloaders(
 
     ``seed`` fija el generator del DataLoader de train (el unico con ``shuffle=True``) y
     la semilla de cada worker: sin esto el shuffle y el augmentation estocastico
-    (``RandomResizedCrop``, ``RandAugment``, ``RandomErasing``) no son reproducibles entre
+    (``RandomResizedCrop`` y ``RandomHorizontalFlip``) no son reproducibles entre
     corridas, aunque el split este versionado.
     """
     spec = processors.spec_for(model_key)  # KeyError explicito si no esta en el registry
@@ -113,8 +113,8 @@ def build_dataloaders(
             "python -m vit_for_101_food_app.dataset cache"
         )
 
-    # Semilla el generator global de torch, no solo el del sampler: v2.RandomResizedCrop,
-    # RandAugment y RandomErasing sacan sus numeros del generator por defecto de torch, no
+    # Semilla el generator global de torch, no solo el del sampler: v2.RandomResizedCrop y
+    # v2.RandomHorizontalFlip sacan sus numeros del generator por defecto de torch, no
     # de uno explicito. Con num_workers=0 no hay _worker_loop que los siembre (eso solo
     # pasa dentro de los procesos hijo), asi que sin esta linea la augmentation seria
     # reproducible en shuffle pero no en contenido cuando se corre sincronico.
