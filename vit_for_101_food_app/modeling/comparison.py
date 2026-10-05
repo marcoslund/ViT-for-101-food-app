@@ -662,7 +662,8 @@ def plot_tradeoff(
     costs: dict[str, str],
     perf_col: str = "f1_macro",
 ) -> plt.Figure:
-    """F1 contra cada eje de costo, un panel por eje (nunca dos escalas en un mismo eje).
+    """Desempeño (``perf_col``) contra cada eje de costo, un panel por eje (nunca dos escalas
+    en un mismo eje).
 
     Cada punto lleva el nombre del modelo al lado: la identidad no depende solo del
     color. Los modelos del frente de Pareto de cada eje llevan un anillo y, si son más
@@ -671,6 +672,7 @@ def plot_tradeoff(
     fig, axes = plt.subplots(1, len(costs), figsize=(4.2 * len(costs), 4), sharey=True)
     axes = np.atleast_1d(axes)
     fig.patch.set_facecolor("white")
+    perf_label = "Top-1 accuracy (test)" if perf_col == "accuracy" else "F1 macro (test)"
     for ax, (col, etiqueta) in zip(axes, costs.items()):
         datos = summary[[col, perf_col]].dropna().astype(float)
         frente = pareto_front(datos, col, perf_col)
@@ -702,7 +704,7 @@ def plot_tradeoff(
         ax.xaxis.set_minor_formatter(NullFormatter())
         ax.margins(x=0.2)
         _style(
-            ax, etiqueta, f"{etiqueta} (escala log)", "F1 macro (test)" if ax is axes[0] else ""
+            ax, etiqueta, f"{etiqueta} (escala log)", perf_label if ax is axes[0] else ""
         )
     anillo = Line2D(
         [],

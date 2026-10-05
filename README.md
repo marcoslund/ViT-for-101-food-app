@@ -41,9 +41,11 @@ plana a lo largo del ranking de dificultad favorecería a MobileViT-S. Cómo res
 ### Alcance
 
 Todos los modelos se entrenan y evalúan **localmente, sobre el mismo hardware**.
-Se miden dos familias de métricas: **desempeño** (top-1 accuracy y macro-F1) y **costo
-arquitectónico** (parámetros, FLOPs, tamaño del modelo y latencia de inferencia). La adecuación a un
-dispositivo con recursos limitados se **argumenta** a partir de esas mediciones.
+Se miden dos familias de métricas: **desempeño** y **costo
+arquitectónico** (parámetros, FLOPs, tamaño del modelo y latencia de inferencia). Como el test está
+**perfectamente balanceado** (250 imágenes por clase en las 101), la métrica principal de desempeño
+es la **top-1 accuracy**; el **macro-F1** y la **top-5 accuracy** se reportan como complemento. La
+adecuación a un dispositivo con recursos limitados se **argumenta** a partir de esas mediciones.
 
 ## El dataset
 
@@ -82,22 +84,22 @@ del test. Los números de cada corrida salen de su `reports/results/<corrida>/me
 contrastes entre corridas de `[reports/results/comparativa/hallazgos.json](reports/results/comparativa/hallazgos.json)`.
 
 
-| Modelo          | Receta              | F1 macro (test) | Accuracy (test) | Parámetros | Latencia CPU int8 |
+| Modelo          | Receta              | Accuracy (test) | F1 macro (test) | Parámetros | Latencia CPU int8 |
 | --------------- | ------------------- | --------------- | --------------- | ---------- | ----------------- |
-| **MobileViT-S** | **lr 5e-4, 20 ép.** | **0,861**       | **0,860**       | **5,0 M**  | **75 ms**         |
+| **MobileViT-S** | **lr 5e-4, 20 ép.** | **0,860**       | **0,861**       | **5,0 M**  | **75 ms**         |
 | MobileViT-S     | lr 5e-5, 20 ép.     | 0,821           | 0,821           | 5,0 M      | 101 ms            |
 | MobileViT-S     | lr 5e-5, 30 ép.     | 0,833           | 0,833           | 5,0 M      | 102 ms            |
 | **Swin-T**      | **lr 5e-4, 20 ép.** | **0,855**       | **0,855**       | **27,6 M** | **89 ms**         |
 | Swin-T          | lr 5e-4, 30 ép.     | 0,855           | 0,855           | 27,6 M     | 98 ms             |
 | **DeiT-Ti**     | **lr 5e-4, 20 ép.** | **0,777**       | **0,777**       | **5,5 M**  | **19 ms**         |
-| ViT-B/16        | lr 5e-4, 20 ép.     | 0,823           | 0,824           | 85,9 M     | 201 ms            |
+| ViT-B/16        | lr 5e-4, 20 ép.     | 0,824           | 0,823           | 85,9 M     | 201 ms            |
 | **ViT-B/16**    | **lr 5e-5, 20 ép.** | **0,884**       | **0,884**       | **85,9 M** | **190 ms**        |
 
 
 - La receta importa tanto como la arquitectura, y no afecta a todos igual. Bajar el learning rate de 5e-4 a 5e-5, con el resto de la receta fijo, sube la accuracy de test de ViT-B/16 de 0,824 a 0,884, pero baja la de MobileViT-S de 0,860 a 0,821; darle 30 épocas a Swin-T en lugar de 20 la deja en 0,855 (sin cambios). Por eso cada arquitectura se evalúa con su mejor receta (elegida por F1 de validación), y no con una receta común: fijarla habría perjudicado al modelo grande y favorecido a los chicos.
 - **ViT-B/16 es el mejor, y MobileViT-S pierde poco.** Sobre el test completo,
 MobileViT-S alcanza 0,860 de accuracy y ViT-B/16 0,884: una diferencia de 0,023 (IC 95 % de 0,019 a
-0,027). Su F1 macro (0,861) equivale al 97 % del de ViT-B/16 (0,884), con 17 veces menos parámetros,
+0,027). Su accuracy equivale al 97 % de la de ViT-B/16, con 17 veces menos parámetros,
 9 veces menos GFLOPs y una latencia en CPU int8 de 75 ms frente a 190 ms (el 39 %). Son los dos
 únicos modelos en el frente de Pareto de los tres ejes de costo.
 - **La brecha es pareja entre clases fáciles y difíciles.** La diferencia de accuracy entre
