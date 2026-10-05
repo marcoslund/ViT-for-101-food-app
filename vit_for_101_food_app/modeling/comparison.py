@@ -29,7 +29,7 @@ from pathlib import Path
 
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter, NullFormatter
+from matplotlib.ticker import FuncFormatter, MaxNLocator, NullFormatter
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -587,17 +587,26 @@ def best_runs(metrics: dict[str, dict], by: str = "best_val_f1_macro") -> dict[s
     return mejores
 
 
-def plot_recipe_curves(histories: dict[str, pd.DataFrame], metrics: dict[str, dict]) -> plt.Figure:
-    """F1 de validación por época, un panel por arquitectura y una línea por receta."""
+def plot_recipe_curves(
+    histories: dict[str, pd.DataFrame], metrics: dict[str, dict], ncols: int = 2
+) -> plt.Figure:
+    """F1 de validación por época, un panel por arquitectura y una línea por receta.
+
+    Los paneles se ordenan en una grilla de ``ncols`` columnas (2x2 con las cuatro
+    arquitecturas), que en el ancho de una página se lee mejor que una sola fila.
+    """
     arquitecturas = list(dict.fromkeys(metrics[r]["model_key"] for r in histories))
     arquitecturas.sort(key=lambda a: (list(MODEL_COLORS).index(a) if a in MODEL_COLORS else 99, a))
     estilos = ("-", "--", ":", "-.")
+    ncols = min(ncols, len(arquitecturas))
+    nrows = math.ceil(len(arquitecturas) / ncols)
     fig, axes = plt.subplots(
-        1, len(arquitecturas), figsize=(4.2 * len(arquitecturas), 4), sharey=True
+        nrows, ncols, figsize=(4.6 * ncols, 3.4 * nrows), sharey=True, squeeze=False
     )
-    axes = np.atleast_1d(axes)
+    for ax in axes.flat[len(arquitecturas) :]:
+        ax.remove()
     fig.patch.set_facecolor("white")
-    for ax, arq in zip(axes, arquitecturas):
+    for n, (ax, arq) in enumerate(zip(axes.flat, arquitecturas)):
         corridas = [r for r in histories if metrics[r]["model_key"] == arq]
         for i, run in enumerate(corridas):
             h = histories[run]
@@ -620,7 +629,14 @@ def plot_recipe_curves(histories: dict[str, pd.DataFrame], metrics: dict[str, di
                 linewidth=1.5,
                 zorder=3,
             )
-        _style(ax, model_name(arq), "época", "F1 macro de validación" if ax is axes[0] else "")
+        # "época" solo en los paneles que no tienen otro debajo; el eje y, en la primera columna.
+        _style(
+            ax,
+            model_name(arq),
+            "época" if n + ncols >= len(arquitecturas) else "",
+            "F1 macro de validación" if n % ncols == 0 else "",
+        )
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True, steps=[1, 2, 5, 10]))
         ax.legend(frameon=False, fontsize=8, labelcolor=INK, loc="lower right")
     _suptitle(fig, "Efecto de la receta dentro de cada arquitectura")
     fig.tight_layout()
